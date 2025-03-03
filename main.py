@@ -19,8 +19,8 @@ try:
     import wandb
     # don't hardcode the key; get it from ENV VAR of client machine
     # for compute node, the key will be set by XT (from xt_config.yaml)
-    if os.getenv("WANDB_API_KEY"):
-        __has_wandb__ = True
+    # if os.getenv("WANDB_API_KEY"):
+    #    __has_wandb__ = True
 except BaseException as ex:
     pass
 
@@ -111,6 +111,8 @@ parser.add_argument('--wandb_tag', type=str, default='test')
 parser.add_argument('--wandb_name', type=str, default=None)
 parser.add_argument('--use_wandb', action='store_true')
 parser.add_argument('--train_log_freq', type=float, default=-1., help='training log frequency in steps, -1 logs at the end of each epoch')
+parser.add_argument('--do_not_watch_gradients', action='store_true', help='if specified, we do not watch gradients')
+
 args = parser.parse_args()
 print(sorted(vars(args).items()))
 
@@ -123,8 +125,8 @@ if args.router_hidden_dim is None:
     args.router_hidden_dim = args.ctrl_hidden_dim * 4
 
 # wandb stuff
-if __has_wandb__:
-    wandb.init(project="TPR", entity=f"{os.environ.get('WANDB_USERNAME')}", config=args.__dict__, tags=[args.wandb_tag],
+if args.use_wandb:
+    wandb.init(project="TPR", config=args.__dict__, tags=[args.wandb_tag],
             mode="online" if args.use_wandb else "disabled", name=args.wandb_name)
     wandb.define_metric("train_acc", summary="max", step_metric='epoch')
     wandb.define_metric("valid_acc", summary="max", step_metric='epoch')
@@ -223,8 +225,7 @@ lr = args.lr
 
 iters = len(train_loader)
 
-watch_gradients = False
-if __has_wandb__ and watch_gradients:
+if args.use_wandb and not(args.do_not_watch_gradients):
     wandb.watch(dtm, log='gradients', log_freq=1)
 
 # Log on the last training step of each epoch
@@ -306,7 +307,7 @@ for epoch_i in range(args.epoch):
             partial_train_correct = 0
             partial_train_total = 0
             train_total_loss_accum = 0
-            if __has_wandb__:
+            if args.use_wandb:
                 wandb.log(dict(
                     epoch=epoch_i,
                     train_acc=train_acc,
@@ -383,11 +384,13 @@ for epoch_i in range(args.epoch):
             writer.add_scalar('Accuracy/valid', valid_acc, step)
             writer.add_scalar('Accuracy/partial valid', partial_valid_acc, step)
             writer.add_scalar('Loss/valid', valid_loss, step)
-            if __has_wandb__:
+            if args.use_wandb:
                 wandb.log(dict(
                     epoch=epoch_i,
                     valid_acc=valid_acc,
                     valid_loss=valid_loss,
+                    partial_valid_acc=partial_valid_acc,
+                    lr=lr
                 ))
 
     best_train_acc = max(train_acc, best_train_acc)
@@ -412,6 +415,9 @@ def calculate_accuracy(data_loader, data_name):
 
         print(f'{data_name} Acc: {correct / total:.2f}')
         writer.add_scalar('Accuracy/{}'.format(data_name), correct / total, step)
+        
+        if args.use_wandb: 
+            wandb.log({f'Final accuracy/{data_name}', correct/total, step})
 
 # Reload the best checkpoint
 dtm.load_state_dict(torch.load(args.checkpoint_file))

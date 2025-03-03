@@ -1,0 +1,171 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.13.9
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    m:
+    - 1: epoch
+    - 1: train_acc
+      5: 1
+      6:
+      - 1
+      - 3
+      7:
+      - 2
+    - 1: valid_acc
+      5: 1
+      6:
+      - 1
+      - 3
+      7:
+      - 2
+    - 1: train_loss
+      5: 1
+      6:
+      - 1
+      - 3
+      7:
+      - 1
+    - 1: valid_loss
+      5: 1
+      6:
+      - 1
+      - 3
+      7:
+      - 1
+    python_version: 3.8.13
+    start_time: 1740971135.430412
+    t:
+      1:
+      - 1
+      - 55
+      2:
+      - 1
+      - 55
+      3:
+      - 7
+      - 15
+      - 16
+      - 23
+      4: 3.8.13
+      5: 0.13.9
+      8:
+      - 5
+arg_dist_fn:
+  desc: null
+  value: softmax
+batch_size:
+  desc: null
+  value: 16
+checkpoint_file:
+  desc: null
+  value: checkpoint.pt
+ctrl_hidden_dim:
+  desc: null
+  value: 64
+ctrl_num_layers:
+  desc: null
+  value: 1
+d_filler:
+  desc: null
+  value: null
+d_role:
+  desc: null
+  value: null
+data_dir:
+  desc: null
+  value: ./data_files
+debug:
+  desc: null
+  value: 1
+dtm_steps:
+  desc: null
+  value: 12
+epoch:
+  desc: null
+  value: null
+gclip:
+  desc: null
+  value: 1.0
+log_grad_norm:
+  desc: null
+  value: false
+lr:
+  desc: null
+  value: 0.0001
+max_train_examples:
+  desc: null
+  value: null
+max_tree_depth:
+  desc: null
+  value: 12
+num_warmup_steps:
+  desc: null
+  value: 10000.0
+op_dist_fn:
+  desc: null
+  value: softmax
+optim_beta1:
+  desc: null
+  value: 0.9
+optim_beta2:
+  desc: null
+  value: 0.95
+predefined_operations_are_random:
+  desc: null
+  value: false
+router_dropout:
+  desc: null
+  value: 0.1
+router_hidden_dim:
+  desc: null
+  value: 256
+save_file:
+  desc: null
+  value: result.tsv
+scheduler:
+  desc: null
+  value: cosine
+scheduler_gamma:
+  desc: null
+  value: 1
+seed:
+  desc: null
+  value: null
+steps:
+  desc: null
+  value: 20000.0
+task_type:
+  desc: null
+  value: car_cdr_rcons
+train_log_freq:
+  desc: null
+  value: 20.0
+transformer_activation:
+  desc: null
+  value: gelu
+transformer_nheads:
+  desc: null
+  value: 4
+transformer_norm_first:
+  desc: null
+  value: 1
+use_wandb:
+  desc: null
+  value: true
+validate_every_num_epochs:
+  desc: null
+  value: 1
+wandb_name:
+  desc: null
+  value: null
+wandb_tag:
+  desc: null
+  value: test
+wd:
+  desc: null
+  value: 0.1
