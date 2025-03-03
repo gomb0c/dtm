@@ -1,1 +1,0 @@
-{"epoch": 178, "train_acc": {"max": 1.0}, "partial_train_acc": 1.0, "train_loss": {"min": 1.0347883971917327e-06}, "lr": 5.720000000000001e-05, "_timestamp": 1740971849.5545948, "_runtime": 714.1241827011108, "_step": 464, "valid_acc": {"max": 1.0}, "valid_loss": {"min": 2.2082298301029368e-07}, "partial_valid_acc": 1.0, "_wandb": {"runtime": 713}}
