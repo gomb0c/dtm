@@ -13,6 +13,7 @@ import os
 import json
 import math
 from nltk import TreePrettyPrinter, Tree
+import matplotlib.pyplot as plt
 
 __has_wandb__ = False
 try:
@@ -107,6 +108,7 @@ parser.add_argument('--validate_every_num_epochs', type=int, default=1,
                     help='How many training epochs do we wait before validating. The default is to validate after'
                          'every training epoch. This is useful when max_train_examples is set to a small number'
                          'so that we don\'t spend too much time validating.')
+parser.add_argument('--base_log_dir', type=str, default='logging')
 parser.add_argument('--wandb_tag', type=str, default='test')
 parser.add_argument('--wandb_name', type=str, default=None)
 parser.add_argument('--use_wandb', action='store_true')
@@ -124,9 +126,11 @@ elif args.steps is not None and args.epoch is not None:
 if args.router_hidden_dim is None:
     args.router_hidden_dim = args.ctrl_hidden_dim * 4
 
+# LOGGING 
+timestamp = time.strftime('%d-%m-%Y-%H:%M:%S')
 # wandb stuff
 if args.use_wandb:
-    wandb.init(project="TPR", config=args.__dict__, tags=[args.wandb_tag],
+    wandb.init(project="TPR", dir=args.base_log_dir, config=args.__dict__, tags=[args.wandb_tag],
             mode="online" if args.use_wandb else "disabled", name=args.wandb_name)
     wandb.define_metric("train_acc", summary="max", step_metric='epoch')
     wandb.define_metric("valid_acc", summary="max", step_metric='epoch')
@@ -134,8 +138,27 @@ if args.use_wandb:
     wandb.define_metric("valid_loss", summary="min", step_metric='epoch')
 
 # TB stuff
-writer = SummaryWriter()
+tensorboard_dir = os.path.join(args.base_log_dir, 'tb', timestamp)
+if not(os.path.exists(tensorboard_dir)):
+    os.makedirs(tensorboard_dir)
+writer = SummaryWriter(log_dir=tensorboard_dir)
 writer.add_text('Hyperparameters', '\n'.join(str(x) for x in sorted(vars(args).items())), global_step=0)
+
+# checkpoint stuff 
+checkpoint_dir = os.path.join(args.base_log_dir, 'checkpoints')
+if not(os.path.exists(checkpoint_dir)): 
+    os.makedirs(checkpoint_dir)
+
+# debug
+if args.debug:
+    debug_dir = os.path.join(args.base_log_dir, 'debug', timestamp)
+    if not(os.path.exists(debug_dir)):
+        os.makedirs(debug_dir)
+    
+# general stats
+summary_dir = os.path.join(args.base_log_dir, 'summary', timestamp)
+if not(os.path.exists(summary_dir)):
+        os.makedirs(summary_dir)
 
 # apply seed
 if args.seed is None:
@@ -163,7 +186,7 @@ train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 print('{} training examples'.format(len(train_data)))
 
 if args.steps is not None:
-    args.epoch = math.ceil(args.steps / len(train_loader))
+    args.epoch = math.ceil(args.steps / (len(train_loader)*args.batch_size))
     print('Steps set, training for {} epochs'.format(args.epoch))
 
 valid_data = BinaryT2TDataset(os.path.join(task_dir, 'dev.jsonl'), max_depth=max_depth, ind2vocab=train_data.ind2vocab, vocab2ind=train_data.vocab2ind, device=device)
@@ -338,10 +361,13 @@ for epoch_i in range(args.epoch):
 
                 if is_debug_step:
                     formatted_tree = TreePrettyPrinter(Tree.fromstring(BatchSymbols2NodeTree(batch['output'], dtm.ind2vocab)[0].str()))
-                    print('Correct output:\n{}'.format(formatted_tree.text()))
                     debug_text = debug_info['text']
+                    with open(os.path.join(debug_dir, 'logs.txt'), 'a+') as f: 
+                        f.write('\n'.join(debug_text))
+                        f.write('Correct output:\n{}'.format(formatted_tree.text()))
+                        
                     writer.add_text('Epoch {}'.format(epoch_i), '\n\n'.join(debug_text), global_step=step)
-
+                    
                 decoded = tpr.unbind(output, decode=True)
 
                 fully_decoded = DecodedTPR2Tree(decoded)
@@ -366,7 +392,8 @@ for epoch_i in range(args.epoch):
             partial_valid_acc = partial_valid_correct / partial_valid_total
             if valid_acc >= best_valid_acc:
                 best_valid_acc = valid_acc
-                torch.save(dtm.state_dict(), args.checkpoint_file)
+                torch.save(dtm.state_dict(), os.path.join(checkpoint_dir, 
+                                                          f'{timestamp}-{args.checkpoint_file}'))
 
             if args.debug:
                 # log info to console at end of each epoch
@@ -412,22 +439,24 @@ def calculate_accuracy(data_loader, data_name):
 
             correct += (fully_decoded == batch['output']).all(dim=-1).sum().item()
             total += batch['output'].size(0)
-
+            
+        acc = correct/total 
         print(f'{data_name} Acc: {correct / total:.2f}')
-        writer.add_scalar('Accuracy/{}'.format(data_name), correct / total, step)
+        writer.add_scalar('Accuracy/{}'.format(data_name), acc, step)
         
         if args.use_wandb: 
-            wandb.log({f'Final accuracy/{data_name}', correct/total, step})
+            wandb.log({f'Final accuracy/{data_name}': acc, 'step': step})
+        return acc
 
 # Reload the best checkpoint
-dtm.load_state_dict(torch.load(args.checkpoint_file))
+dtm.load_state_dict(torch.load(os.path.join(checkpoint_dir, f'{timestamp}-{args.checkpoint_file}')))
 
-calculate_accuracy(test_loader, 'Test')
+test_acc = calculate_accuracy(test_loader, 'Test')
 if eval_long_loader:
-    calculate_accuracy(eval_long_loader, 'ood_long')
+    ood_long_acc = calculate_accuracy(eval_long_loader, 'ood_long')
 
 if eval_new_loader:
-    calculate_accuracy(eval_new_loader, 'ood_new')
+    ood_new_acc = calculate_accuracy(eval_new_loader, 'ood_new')
 
 with open(args.save_file, 'a') as f:
     log_obj = {'last_train_acc': train_acc,
@@ -437,8 +466,24 @@ with open(args.save_file, 'a') as f:
     log_obj.update(vars(args))
     f.write(json.dumps(log_obj)+'\n')
 
-print("final metrics & hparams:\n{}\n".format(log_obj))
 
+print("final metrics & hparams:\n{}\n".format(log_obj))
 print(f'Best Train Acc: {best_train_acc:.3f}')
 print(f'Best Valid Acc: {best_valid_acc:.3f}')
+
+with open(os.path.join(summary_dir, 'summary.txt'), 'a+') as f: 
+    f.write(f'Best train acc: {best_train_acc:.3f}\n')
+    f.write(f'Best val acc: {best_valid_acc:.3f}\n')
+    f.write(f'Test acc: {test_acc:.3f}\n')
+    if eval_long_loader:
+        f.write(f'Ood_long test acc: {test_acc:.3f}\n')
+    if eval_new_loader:
+        f.write(f'Ood_new test acc: {test_acc:.3f}\n')
+
 writer.close()
+
+
+# change file stuff 
+# let's visualise the distribution of weights -> wandb 
+# apply our hyperparam search -> try and find optimal hyperparams that lead to best performance on val set with smallest number of epochs
+# still needs about 50 epochs to ifner correct rules... (potentially because we are treating the tree like a 'flat' structure...)

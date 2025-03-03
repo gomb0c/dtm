@@ -53,6 +53,7 @@ class DiffTreeMachine(nn.Module):
 
         encodings = torch.cat((op_logits_token, root_filler_token), dim=1)
 
+        weight_dict = {} 
         for step in range(self.steps):
             # Encode the most recent TPR in memory
 
@@ -83,6 +84,16 @@ class DiffTreeMachine(nn.Module):
                     np.array2string(arg_weights[0, :, 2].detach().cpu().numpy(), precision=2)))
                 debug_writer.append('cons2 argument weight: {}'.format(
                     np.array2string(arg_weights[0, :, 3].detach().cpu().numpy(), precision=2)))
+                weight_dict[step] = {'op_dist': op_dist[0],
+                                     'tree_dist_car': arg_weights[0,:,0],
+                                     'tree_dist_cdr': arg_weights[0,:,1],
+                                     'tree_dist_cons1': arg_weights[0,:,2],
+                                     'tree_dist_cons2': arg_weights[0,:,3]}
+                weight_dict[step] = dict(
+                    map(lambda kv: (kv[0], kv[1].detach().cpu().numpy()),
+                        weight_dict[step].items())
+                )
+                
                 fully_decoded = DecodedTPR2Tree(
                     self.tpr.unbind(new_tree[0].unsqueeze(0), decode=True))
                 debug_tree = BatchSymbols2NodeTree(fully_decoded, self.ind2vocab)[0]
@@ -97,8 +108,9 @@ class DiffTreeMachine(nn.Module):
 
         debug_info = None
         if debug:
-            print('\n'.join(debug_writer))
-            debug_info = {'text': debug_writer}
+            #print('\n'.join(debug_writer))
+            debug_info = {'text': debug_writer,
+                          'weight_dict': weight_dict}
 
         return memory[:, -1], debug_info, None
 
