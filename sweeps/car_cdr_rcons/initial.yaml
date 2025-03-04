@@ -1,0 +1,34 @@
+program: main.py
+name: initial_sweep
+method: bayes
+metric:
+  goal: minimize
+  name: valid_loss.min
+parameters:
+  steps:
+    max: 12
+    min: 2
+  wd:
+    max: 0.1
+    min: 0.01
+    distribution: log_uniform_values
+  optim_beta2:
+    min: 0.95
+    max: 0.98
+    distribution: log_uniform_values
+  ctrl_hidden_dim: 
+    values: [32, 64]
+  router_dropout:
+    min: 0.0
+    max: 0.1
+command:
+  - ${env}
+  - python
+  - ${program}
+  - "--use_wandb"
+  - "--transformer_norm_first=1"
+  - "--num_warmup_steps=10000"
+  - "--gclip=1"
+  - "--steps=35000"
+  - "--batch_size=16"
+  - "--task_type=car_cdr_rcons"
