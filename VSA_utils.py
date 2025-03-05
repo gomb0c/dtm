@@ -9,6 +9,8 @@ class VSAOps():
     def __init__(self, vsa_type: VSATypes=VSATypes.HRR) -> None: 
         if vsa_type == VSATypes.HRR: 
             self.bind_op = hrr_ops.circular_conv
+            self.unbind_op = hrr_ops.circular_conv 
+            self.inverse_op = hrr_ops.get_inv
             self.generator = hrr_ops.generate_seed_vecs
         else: 
             raise NotImplementedError(f"{vsa_type} does not yet have implemented operations")
@@ -151,10 +153,21 @@ class VSAConsNet(nn.Module):
                 self.vsa_ops.bind(right_st, self.right_role) + self.vsa_ops.bind(root_filler, self.root_role))
     
     
-class VSACarNet(nn.Module): 
-    def __init__(self, vsa_ops: VSAOps) -> None: 
-        pass 
+class VSACarNet(nn.Module): # left 
+    def __init__(self, vsa_ops: VSAOps, left_role: torch.Tensor) -> None: 
+        self.vsa_ops = vsa_ops 
+        self.left_role = left_role 
     
-class VSACdrNet(nn.Module): 
-    def __init__(self, vsa_ops: VSAOps) -> None: 
-        pass 
+    def forward(self, tree_mem: torch.Tensor, weights) -> torch.Tensor: 
+        weighted_tree = torch.einsum('btd,bt->bd', tree_mem, weights)
+        return self.vsa_ops.bind(weighted_tree, self.vsa_ops.inverse_op(self.left_role))
+    
+class VSACdrNet(nn.Module): # right
+    def __init__(self, vsa_ops: VSAOps, right_role: torch.Tensor) -> None: 
+        self.vsa_ops = vsa_ops 
+        self.right_role = right_role 
+    
+    def forward(self, tree_mem: torch.Tensor, weights) -> torch.Tensor: 
+        weighted_tree = torch.einsum('btd,bt->bd', tree_mem, weights)
+        return self.vsa_ops.bind(weighted_tree, self.vsa_ops.inverse_op(self.right_role)) 
+    

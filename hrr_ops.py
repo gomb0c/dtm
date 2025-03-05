@@ -54,15 +54,20 @@ def get_appx_inv(a):
     """
     return torch.roll(torch.flip(a, dims=[-1]), 1,-1)
 
-def get_inv(a, typ=torch.DoubleTensor):
+def get_inv(a: torch.DoubleTensor, eps: 1e-8):
     """
     Compute exact inverse of vector a.
-    """
+    Old method from authors:
     left = torch.rfft(a, 1, onesided=False)
     complex_1 = np.zeros(left.shape)
     complex_1[...,0] = 1
     op = complex_division(typ(complex_1),left)
     return torch.irfft(op,1,onesided=False)
+    """
+    A = torch.fft.fft(a, dim=-1) # assume A is real
+    A_inv = 1/ (A + eps) 
+    a_inv = torch.fft.ifft(A_inv, dim=-1)
+    return a_inv.real
 
 def complexMagProj(x):
     """
