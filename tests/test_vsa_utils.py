@@ -123,20 +123,58 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         
     
     def test_multinode_tree_unbalanced_root_role(self): 
-        pass 
+        n_fillers = 4
+        hypervec_dim = 2
+        filler_weights = torch.Tensor([
+            [1, 2], 
+            [2, 8],
+            [-3, 7],
+            [0, 1]
+        ])
+        role_weights = torch.Tensor([
+            [1/2, -1/2],
+            [1/3, 4/5],
+            [1, 9]
+        ])
+        tree = torch.Tensor([2, 4, 1, 0, 1, 3, 0, 1, 0, 0, 0, 0])
+        #          2
+        #    4           1
+        #  0   1       3    0
+        # 0  0  0  0  1  0  0  0   
+        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+                               bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
+        # find rep of tree rooted at 3
+        # [-3, 7] + l \ast [1, 2]
+        lr_tree = torch.Tensor([-3, 7]) + torch.Tensor([-1/2, 1/2])
+        
+        # find rep of tree rooted at 4 
+        # [0, 1] + r \ast [1, 2]
+        l_tree = torch.Tensor([0, 1]) + torch.Tensor([29/15, 22/15])
+        
+        # find rep of tree rooted at 1
+        # [1, 2] + l \ast lr_tree 
+        r_tree = torch.Tensor([1, 2]) + torch.Tensor([-11/2, 11/2])
+        
+        # find rep of tree rooted at root
+        # [2, 8] \ast root 
+        root_rep = torch.Tensor([74, 26])
+        # expected = root_rep + l \ast l_tree + r \ast r_tree
+        l_part = torch.Tensor([-4/15, 4/15])
+        r_part = torch.Tensor([9/2, -11/10])
+        expected_rep = root_rep + l_part + r_part
     
-class VSAUtilsTestBatchHRR(absltest.TestCase): 
-    def test_single_elem_batch_no_empty_nodes(self): 
-        pass 
-    
-    def test_single_elem_batch_empty_nodes(self): 
-        pass
-    
-    def test_batched_no_empty_nodes(self): 
-        pass 
-    
-    def test_batched_some_empty_nodes(self): 
-        pass 
+#class VSAUtilsTestBatchHRR(absltest.TestCase): 
+#    def test_single_elem_batch_no_empty_nodes(self): 
+#        pass 
+#    
+#    def test_single_elem_batch_empty_nodes(self): 
+#        pass
+#    
+#    def test_batched_no_empty_nodes(self): 
+#        pass 
+#    
+#    def test_batched_some_empty_nodes(self): 
+#        pass 
     
     
 if __name__ == '__main__': 

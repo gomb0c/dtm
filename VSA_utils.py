@@ -89,11 +89,11 @@ class VSA(nn.Module):
             f = self.filler_dict.weight[vocab_idxs[valid_mask].long() - 1] 
             # note that we offset by 1 due to the fact that vocab_idx of 0 is used 
             # by the authors of this repo to indicate that a position is empty
-            print(f'Shape of f is {f.shape}')
+            #print(f'Shape of f is {f.shape}')
             
             hrr_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
             hrr_reps_j[valid_mask] = f 
-            print(f'Filler is {f}\nhrr reps is {hrr_reps}\nvalid mask is {valid_mask}')
+            #print(f'Filler is {f}\nhrr reps is {hrr_reps}\nvalid mask is {valid_mask}')
             
             # bind the root with a root role if applicable
             if j == 0 and self.bind_root: 
@@ -108,10 +108,10 @@ class VSA(nn.Module):
                     # convolve in batch -> (n_valid_children, hypervec_dim)
                     left_child_vecs = hrr_reps[left_child_mask, left_idx, :]
                     conv_left = hrr_ops.circular_conv(self.left_role, left_child_vecs)
-                    print(f'Hrr reps before is {hrr_reps_j[left_child_mask]}')
+                    #print(f'Hrr reps before is {hrr_reps_j[left_child_mask]}')
                     hrr_reps_j[left_child_mask] += conv_left 
-                    print(f'Left child is {left_child_vecs}\nconv result is {conv_left}\nleft role is {self.left_role}')
-                    print(f'Hrr reps after is {hrr_reps_j[left_child_mask]}\n')
+                    #print(f'Left child is {left_child_vecs}\nconv result is {conv_left}\nleft role is {self.left_role}')
+                    #print(f'Hrr reps after is {hrr_reps_j[left_child_mask]}\n')
             # right child
             right_idx = 2*j + 2
             if right_idx < max_nodes: 
@@ -120,7 +120,7 @@ class VSA(nn.Module):
                     right_child_vecs = hrr_reps[right_child_mask, right_idx, :]
                     conv_right = hrr_ops.circular_conv(self.right_role, right_child_vecs)
                     hrr_reps_j[right_child_mask] += conv_right
-                    print(f'Right child is {right_child_vecs}, j is {hrr_reps_j[right_child_mask]}, right role is {self.right_role}')
+                    #print(f'Right child is {right_child_vecs}, j is {hrr_reps_j[right_child_mask]}, right role is {self.right_role}')
             
             hrr_reps[:, j, :] = hrr_reps_j
         
