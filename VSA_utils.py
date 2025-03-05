@@ -128,13 +128,33 @@ class VSA(nn.Module):
         return vsa_reps[:, 0, :] # corresponds to vsa rep of root
                 
 class VSAConsNet(nn.Module): 
-    def __init__(self) -> None: 
-        pass 
+    def __init__(self, vsa_ops: VSAOps, left_role: torch.Tensor, right_role: torch.Tensor, 
+                 root_role: torch.Tensor) -> None: 
+        self.vsa_ops = vsa_ops
+        self.left_role = left_role 
+        self.right_role = right_role 
+        self.root_role = root_role 
+    
+    def forward(self, tree_mem: torch.Tensor, weights_left: torch.Tensor, 
+                weights_right: torch.Tensor, root_filler) -> torch.Tensor: 
+        '''
+        inputs:  
+            tree_mem (torch.Tensor) of dimension (B, T, D), where T denotes 
+                number of steps/memory cells, and D denotes hypervec dim
+            weights_left (torch.Tensor) of dimension (B, T)
+            weights_right (torch.Tensor) of dimension (B, T)
+            root_filler (torch.Tensor) of dimension (B, D)
+        '''
+        left_st = torch.einsum('btd,bt->bd', tree_mem, weights_left)
+        right_st = torch.einsum('btd,bt->bd', tree_mem, weights_right)
+        return (self.vsa_ops.bind(left_st, self.left_role) + 
+                self.vsa_ops.bind(right_st, self.right_role) + self.vsa_ops.bind(root_filler, self.root_role))
+    
     
 class VSACarNet(nn.Module): 
-    def __init__(self) -> None: 
+    def __init__(self, vsa_ops: VSAOps) -> None: 
         pass 
     
 class VSACdrNet(nn.Module): 
-    def __init__(self) -> None: 
+    def __init__(self, vsa_ops: VSAOps) -> None: 
         pass 
