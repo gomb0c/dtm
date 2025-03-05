@@ -2,13 +2,13 @@ import torch
 import numpy as np
 from absl.testing import absltest 
 
-from VSA_utils import VSA
+from VSA_utils import VSA, VSAOps
 import constants.vsa_types as VSATypes
 
 def get_vsa_instance(n_fillers: int, dim: int, vsa_type: VSATypes, bind_root: bool,
                  filler_weights: torch.Tensor = None, role_weights: torch.Tensor = None, 
                  strict_orth: bool=False) -> VSA:
-    vsa = VSA(n_fillers, dim, vsa_type, bind_root, strict_orth)
+    vsa = VSA(n_fillers, dim, VSAOps(vsa_type), bind_root, strict_orth)
     vsa._set_hypervecs(filler_weights, role_weights)
     return vsa
 

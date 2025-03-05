@@ -5,10 +5,18 @@ import constants.vsa_types as VSATypes
 import constants.positions as Positions
 import hrr_ops as hrr_ops
 
+class VSAOps(): 
+    def __init__(self, vsa_type: VSATypes=VSATypes.HRR) -> None: 
+        if vsa_type == VSATypes.HRR: 
+            self.bind_op = hrr_ops.circular_conv
+            self.generator = hrr_ops.generate_seed_vecs
+        else: 
+            raise NotImplementedError(f"{vsa_type} does not yet have implemented operations")
 
+    
 class VSA(nn.Module): 
     def __init__(self, n_fillers: int, dim: int, 
-                 vsa_type: VSATypes=VSATypes.HRR,
+                 vsa_operator: VSAOps,
                  bind_root: bool=False,
                  strict_orth: bool=False) -> None: 
         super().__init__() 
@@ -21,7 +29,7 @@ class VSA(nn.Module):
         self.hypervec_dim = dim
         self.n_hypervecs = 2 + int(bind_root) + n_fillers
         self.bind_root = bind_root
-        self.vsa_type = vsa_type
+        self.vsa_operator = vsa_operator 
         self.n_roles = 2 + int(bind_root)
         
         # initialise all seed hypervectors according to https://arxiv.org/pdf/2109.02157
@@ -48,13 +56,9 @@ class VSA(nn.Module):
             self.root_role = nn.Parameter(self.role_dict.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
     
     def init_hypervecs(self) -> None:
-        if self.vsa_type == VSATypes.HRR:
-            hypervecs = hrr_ops.generate_seed_vecs(n_vecs=self.n_hypervecs,
+        hypervecs = self.vsa_operator.generator(n_vecs=self.n_hypervecs,
                                                    dims=self.hypervec_dim,
                                                    strict_orth=self.strict_orth)
-        else: 
-            raise NotImplementedError(f'VSA type {self.vsa_type} has not yet been implemented\n')
-            
         self.role_dict.weight = nn.Parameter(hypervecs[:self.n_roles], requires_grad=False)
         self.filler_dict.weight = nn.Parameter(hypervecs[self.n_roles, :], requires_grad=False)
     
@@ -64,14 +68,11 @@ class VSA(nn.Module):
             trees (torch.Tensor) corresponds to a tensor of dimension (B, 2**max_depth-1),
                 Suppose val:= tree[i, j]. Then, the node at BFS position j is ind2vocab[val]
         '''
-        if self.vsa_type == VSATypes.HRR: 
-            return self.get_hrr_reps(trees)
-        else: 
-            raise NotImplementedError(f'VSA Type {self.vsa_type} not implemented\n')
+        return self.get_vsa_repn(trees)
     
-    def get_hrr_reps(self, trees: torch.Tensor) -> torch.Tensor: 
+    def get_vsa_repn(self, trees: torch.Tensor) -> torch.Tensor: 
         b_sz, max_nodes = trees.shape
-        hrr_reps = torch.zeros(size=(b_sz, max_nodes, self.hypervec_dim), 
+        vsa_reps = torch.zeros(size=(b_sz, max_nodes, self.hypervec_dim), 
                                device=trees.device)
         
         for j in reversed(range(max_nodes)): 
@@ -91,14 +92,14 @@ class VSA(nn.Module):
             # by the authors of this repo to indicate that a position is empty
             #print(f'Shape of f is {f.shape}')
             
-            hrr_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
-            hrr_reps_j[valid_mask] = f 
-            #print(f'Filler is {f}\nhrr reps is {hrr_reps}\nvalid mask is {valid_mask}')
+            vsa_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
+            vsa_reps_j[valid_mask] = f 
+            #print(f'Filler is {f}\nhrr reps is {vsa_reps}\nvalid mask is {valid_mask}')
             
             # bind the root with a root role if applicable
             if j == 0 and self.bind_root: 
-                hrr_reps_j[valid_mask] = hrr_ops.circular_conv(self.root_role, f)
-                #print(f'J == 0 and circular conv is {hrr_reps_j[valid_mask]}\nRoot role is {self.root_role}, f is {f}')
+                vsa_reps_j[valid_mask] = self.vsa_operator.bind_op(self.root_role, f)
+                #print(f'J == 0 and circular conv is {vsa_reps_j[valid_mask]}\nRoot role is {self.root_role}, f is {f}')
             
             # left child 
             left_idx = 2*j + 1
@@ -106,23 +107,34 @@ class VSA(nn.Module):
                 left_child_mask = valid_mask & (trees[:, left_idx] > 0)
                 if torch.any(left_child_mask): 
                     # convolve in batch -> (n_valid_children, hypervec_dim)
-                    left_child_vecs = hrr_reps[left_child_mask, left_idx, :]
-                    conv_left = hrr_ops.circular_conv(self.left_role, left_child_vecs)
-                    #print(f'Hrr reps before is {hrr_reps_j[left_child_mask]}')
-                    hrr_reps_j[left_child_mask] += conv_left 
+                    left_child_vecs = vsa_reps[left_child_mask, left_idx, :]
+                    conv_left = self.vsa_operator.bind_op(self.left_role, left_child_vecs)
+                    #print(f'Hrr reps before is {vsa_reps_j[left_child_mask]}')
+                    vsa_reps_j[left_child_mask] += conv_left 
                     #print(f'Left child is {left_child_vecs}\nconv result is {conv_left}\nleft role is {self.left_role}')
-                    #print(f'Hrr reps after is {hrr_reps_j[left_child_mask]}\n')
+                    #print(f'Hrr reps after is {vsa_reps_j[left_child_mask]}\n')
             # right child
             right_idx = 2*j + 2
             if right_idx < max_nodes: 
                 right_child_mask = valid_mask & (trees[:, right_idx] > 0)
                 if torch.any(right_child_mask): 
-                    right_child_vecs = hrr_reps[right_child_mask, right_idx, :]
-                    conv_right = hrr_ops.circular_conv(self.right_role, right_child_vecs)
-                    hrr_reps_j[right_child_mask] += conv_right
-                    #print(f'Right child is {right_child_vecs}, j is {hrr_reps_j[right_child_mask]}, right role is {self.right_role}')
+                    right_child_vecs = vsa_reps[right_child_mask, right_idx, :]
+                    conv_right = self.vsa_operator.bind_op(self.right_role, right_child_vecs)
+                    vsa_reps_j[right_child_mask] += conv_right
+                    #print(f'Right child is {right_child_vecs}, j is {vsa_reps_j[right_child_mask]}, right role is {self.right_role}')
             
-            hrr_reps[:, j, :] = hrr_reps_j
+            vsa_reps[:, j, :] = vsa_reps_j
         
-        return hrr_reps[:, 0, :] # corresponds to vsa rep of root
+        return vsa_reps[:, 0, :] # corresponds to vsa rep of root
                 
+class VSAConsNet(nn.Module): 
+    def __init__(self) -> None: 
+        pass 
+    
+class VSACarNet(nn.Module): 
+    def __init__(self) -> None: 
+        pass 
+    
+class VSACdrNet(nn.Module): 
+    def __init__(self) -> None: 
+        pass 
