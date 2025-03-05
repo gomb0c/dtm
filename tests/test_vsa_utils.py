@@ -87,7 +87,40 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
     
     def test_multinode_tree_unbalanced(self): 
-        pass 
+        n_fillers = 5
+        hypervec_dim = 3
+        filler_weights = torch.Tensor([
+            [1, 2, 3],
+            [3, 4, 1],
+            [2, 2, 1],
+            [14, 21, 9],
+            [9, 3, 2]
+        ])
+        role_weights = torch.Tensor([
+            [1/2, 1/3, 1/4],
+            [1/3, 1/3, -1/2]
+        ])
+        tree = torch.Tensor([1, 3, 5, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]) # 0 indicates empty
+        #     1
+        #   3   5
+        #  4
+        # 2
+        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+                               bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
+        # get hrr rep of tree rooted at 4
+        ll_tree = torch.Tensor([14, 21, 9]) + torch.Tensor([17/6, 13/4, 31/12])
+        
+        # get hrr rep of tree rooted at 3
+        l_tree = torch.Tensor([2, 2, 1]) + torch.Tensor([2641/144, 2971/144, 2604/144])
+        
+        # now get the hrr rep of the entire tree 
+        left_part = torch.Tensor([38343/1728, 39514/1728, 38311/1728])
+        right_part = torch.Tensor([13/6, 3, -17/6]) 
+        expected_result = torch.Tensor([1, 2, 3]) + left_part + right_part
+        
+        hrr_rep = vsa(tree.unsqueeze(0))
+        np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
+        
     
     def test_multinode_tree_unbalanced_root_role(self): 
         pass 
