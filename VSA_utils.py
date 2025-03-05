@@ -1,0 +1,128 @@
+import torch 
+import torch.nn as nn
+
+import constants.vsa_types as VSATypes
+import constants.positions as Positions
+import hrr_ops as hrr_ops
+
+
+class VSA(nn.Module): 
+    def __init__(self, n_fillers: int, dim: int, 
+                 vsa_type: VSATypes=VSATypes.HRR,
+                 bind_root: bool=False,
+                 strict_orth: bool=False) -> None: 
+        super().__init__() 
+        self.strict_orth = strict_orth 
+        self.filler_dict = nn.Embedding(num_embeddings=n_fillers,
+                                        embedding_dim=dim)
+        self.role_dict = nn.Embedding(num_embeddings=2 + int(bind_root), 
+                                      embedding_dim=dim)
+                
+        self.hypervec_dim = dim
+        self.n_hypervecs = 2 + int(bind_root) + n_fillers
+        self.bind_root = bind_root
+        self.vsa_type = vsa_type
+        self.n_roles = 2 + int(bind_root)
+        
+        # initialise all seed hypervectors according to https://arxiv.org/pdf/2109.02157
+        # use unitary seed hypervectors 
+        
+        self.filler_dict.requires_grad = False 
+        self.filler_dict.weight.requires_grad = False 
+        self.role_dict.requires_grad = False
+        self.role_dict.weight.requires_grad = False 
+        
+        self.init_hypervecs()
+        self.left_role = nn.Parameter(self.role_dict.weight[Positions.LEFT_INDEX], requires_grad=False)
+        self.right_role = nn.Parameter(self.role_dict.weight[Positions.RIGHT_INDEX], requires_grad=False)
+        self.root_role = nn.Parameter(self.role_dict.weight[Positions.ROOT_INDEX], requires_grad=False) if self.bind_root else None
+    
+    def _set_hypervecs(self, filler_weights: torch.Tensor=None, role_weights: torch.Tensor=None) -> None:
+        ''' For testing purposes '''
+        if filler_weights is not None: 
+            self.filler_dict.weight = nn.Parameter(filler_weights, requires_grad=False)
+        if role_weights is not None: 
+            self.role_dict.weight = nn.Parameter(role_weights, requires_grad=False)
+            self.left_role = nn.Parameter(self.role_dict.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
+            self.right_role = nn.Parameter(self.role_dict.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
+            self.root_role = nn.Parameter(self.role_dict.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
+    
+    def init_hypervecs(self) -> None:
+        if self.vsa_type == VSATypes.HRR:
+            hypervecs = hrr_ops.generate_seed_vecs(n_vecs=self.n_hypervecs,
+                                                   dims=self.hypervec_dim,
+                                                   strict_orth=self.strict_orth)
+        else: 
+            raise NotImplementedError(f'VSA type {self.vsa_type} has not yet been implemented\n')
+            
+        self.role_dict.weight = nn.Parameter(hypervecs[:self.n_roles], requires_grad=False)
+        self.filler_dict.weight = nn.Parameter(hypervecs[self.n_roles, :], requires_grad=False)
+    
+    def forward(self, trees: torch.Tensor) -> torch.Tensor: 
+        '''
+        inputs: 
+            trees (torch.Tensor) corresponds to a tensor of dimension (B, 2**max_depth-1),
+                Suppose val:= tree[i, j]. Then, the node at BFS position j is ind2vocab[val]
+        '''
+        if self.vsa_type == VSATypes.HRR: 
+            return self.get_hrr_reps(trees)
+        else: 
+            raise NotImplementedError(f'VSA Type {self.vsa_type} not implemented\n')
+    
+    def get_hrr_reps(self, trees: torch.Tensor) -> torch.Tensor: 
+        b_sz, max_nodes = trees.shape
+        hrr_reps = torch.zeros(size=(b_sz, max_nodes, self.hypervec_dim), 
+                               device=trees.device)
+        
+        for j in reversed(range(max_nodes)): 
+            # get vocab indices for j-th node across match
+            # shape (B, ) (0 => no node)
+            vocab_idxs = trees[:, j]
+            
+            # make mask of non-empty nodes
+            valid_mask = (vocab_idxs > 0)
+            
+            if not torch.any(valid_mask): 
+                continue 
+            
+            # filler vectors for valid batch entries at index j
+            f = self.filler_dict.weight[vocab_idxs[valid_mask].long() - 1] 
+            # note that we offset by 1 due to the fact that vocab_idx of 0 is used 
+            # by the authors of this repo to indicate that a position is empty
+            print(f'Shape of f is {f.shape}')
+            
+            hrr_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
+            hrr_reps_j[valid_mask] = f 
+            print(f'Filler is {f}\nhrr reps is {hrr_reps}\nvalid mask is {valid_mask}')
+            
+            # bind the root with a root role if applicable
+            if j == 0 and self.bind_root: 
+                hrr_reps_j[valid_mask] = hrr_ops.circular_conv(self.root_role, f)
+                #print(f'J == 0 and circular conv is {hrr_reps_j[valid_mask]}\nRoot role is {self.root_role}, f is {f}')
+            
+            # left child 
+            left_idx = 2*j + 1
+            if left_idx < max_nodes: 
+                left_child_mask = valid_mask & (trees[:, left_idx] > 0)
+                if torch.any(left_child_mask): 
+                    # convolve in batch -> (n_valid_children, hypervec_dim)
+                    left_child_vecs = hrr_reps[left_child_mask, left_idx, :]
+                    conv_left = hrr_ops.circular_conv(self.left_role, left_child_vecs)
+                    #print(f'Hrr reps before is {hrr_reps_j[left_child_mask]}')
+                    hrr_reps_j[left_child_mask] += conv_left 
+                    #print(f'Left child is {left_child_vecs}\nconv result is {conv_left}\nleft role is {self.left_role}')
+                    #print(f'Hrr reps after is {hrr_reps_j[left_child_mask]}\n')
+            # right child
+            right_idx = 2*j + 2
+            if right_idx < max_nodes: 
+                right_child_mask = valid_mask & (trees[:, right_idx] > 0)
+                if torch.any(right_child_mask): 
+                    right_child_vecs = hrr_reps[right_child_mask, right_idx, :]
+                    conv_right = hrr_ops.circular_conv(self.right_role, right_child_vecs)
+                    hrr_reps_j[right_child_mask] += conv_right
+                    #print(f'Right child is {right_child_vecs}, j is {hrr_reps_j[right_child_mask]}, right role is {self.right_role}')
+            
+            hrr_reps[:, j, :] = hrr_reps_j
+        
+        return hrr_reps[:, 0, :] # corresponds to vsa rep of root
+                

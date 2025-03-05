@@ -83,6 +83,17 @@ parser.add_argument('--data_dir', type=str, default='./data_files',
                     help='The directory where the data is stored.')
 parser.add_argument('--task_type', type=str, default='active_logical_ttb',
                     help='The task type from Basic Sentence Transforms')
+parser.add_argument('--use_vsas', action='store_true', help='If specified, use vsas to represent' + 
+                    'the binary tree data-structure and use vsa operations to encode car/cdr/cons operations')
+parser.add_argument('--vsa_type', default='HRR', choices=['HRR, MBAT', 'FHRR', 'MAP-C', 'MAP-B', 'MAP-I'])
+''' 
+non self-inverse & approximataely invertible: HRR
+non self-inverse & exact invertible: FHRR, MBAT
+self-inverse & approximately invertible: MAP-C
+self-inverse & exact invertible MAP-B, MAP-I, BSC
+Walsh Hadamard Derived VSA (2024 neurips paper )
+'''
+
 
 # optim
 parser.add_argument('--optim_beta1', type=float, default=0.9)
@@ -212,8 +223,11 @@ if os.path.isfile(os.path.join(task_dir, 'ood_new.jsonl')):
 if d_filler is None:
     d_filler = len(train_data.ind2vocab)
 
-tpr = TPR(args, num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
-          d_filler=d_filler, d_role=d_role).to(device=device)
+if args.use_vsas:
+    raise NotImplementedError('VSA method not yet implemented!!')
+else:
+    tpr = TPR(args, num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
+            d_filler=d_filler, d_role=d_role).to(device=device)
 
 dtm = DiffTreeMachine(d_filler, d_role, args.ctrl_hidden_dim, tpr.role_emb, args.dtm_steps,
                       args.router_hidden_dim, nhead=args.transformer_nheads,

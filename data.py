@@ -5,6 +5,22 @@ import json
 
 from node import text_tree_to_node
 
+'''
+Example: 
+Vocab2ind is {'<empty>': 0, 'RCONS': 1, 'DET': 2, 'one': 3, 
+'NOUN': 4, 'rabbit': 5, 'R': 6, 'some': 7, 'cactus': 8,
+'CDR': 9, 'her': 10, 'weed': 11, 'his': 12, 'CAR': 13, 
+'my': 14, 'bear': 15, 'fox': 16, 'sheep': 17, 'the': 18, 
+'reindeer': 19, 'burro': 20, 'pig': 21, 'your': 22, 'flower': 23, 
+'our': 24, 'donkey': 25, 'cat': 26, 'a': 27, 'cheetah': 28, 'crocodile': 29, 
+'goat': 30, 'snake': 31, 'horse': 32, 'rose': 33, 'dog': 34, 'leopard': 35, 
+'bamboo': 36, 'tree': 37, 'giraffe': 38, 'cow': 39, 'blossom': 40, 
+'zebra': 41, 'lamb': 42, 'elephant': 43}
+
+Sample is ( CDR ( DET her ) ( NOUN bamboo ) ), 
+transformed is tensor([9, 2, 4,  ..., 0, 0, 0], device='cuda:0')
+'''
+
 class BinaryT2TDataset(Dataset):
     '''
     Trees are represented as vectors of indices of length 2**depth
@@ -29,6 +45,7 @@ class BinaryT2TDataset(Dataset):
 
             self.data = self.process_trees(rows)
 
+        print(f'Vocab2ind is {vocab2ind}\n')
 
     def process_trees(self, data):
         processed = []
@@ -81,6 +98,10 @@ class BinaryT2TDataset(Dataset):
         transformed_sample['example_type'] = sample['example_type'] if sample['example_type'] is not None else 0
         transformed_sample['input'] = self.text_to_tensors(sample['input'])
         transformed_sample['output'] = self.text_to_tensors(sample['output'])
+        
+        input = sample['input']
+        transformed = transformed_sample['input']
+        print(f'Sample is {input}, transformed is {transformed}')
         return transformed_sample
     
     def text_to_tensors(self, node):
