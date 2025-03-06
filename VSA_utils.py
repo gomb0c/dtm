@@ -20,9 +20,9 @@ class VSAOps():
             raise NotImplementedError(f"{vsa_type} does not yet have implemented operations")
 
     
-class VSA(VectorSymbolicConverter): 
+class VSAConverter(VectorSymbolicConverter): 
     def __init__(self, n_fillers: int, dim: int, 
-                 vsa_operator: VSAOps, max_d: int,
+                 vsa_operator: VSAOps, max_d: int=15,
                  bind_root: bool=False,
                  strict_orth: bool=False) -> None: 
         super().__init__() 
@@ -135,7 +135,7 @@ class VSA(VectorSymbolicConverter):
         
         return vsa_reps[:, 0, :] # corresponds to vsa rep of root
     
-    def _decode_level(self, vsa: torch.Tensor, eps: float) -> torch.Tensor: 
+    def _decode_level(self, level_vsas: torch.Tensor, eps: float) -> torch.Tensor: 
         ''' 
         Given a vsa representation of a tree, extracts cosine similarity between values 'bound' to a node
         and the filler embeddings 
@@ -143,10 +143,17 @@ class VSA(VectorSymbolicConverter):
         Inputs: 
             vsa (torch.Tensor) of dimension (B, 2**curr_depth - 1, D)
         '''
-        norm = torch.norm(vsa, dim=-1, keepdim=True)                                 # (B, 2**curr_depth - 1, 1)
+        print(f'Level vsas has shape {level_vsas.shape}')
+        norm = torch.norm(level_vsas, dim=-1, keepdim=True)                               # (B, 2**curr_depth - 1, 1)
+        print(f'norm is {norm} with shape {norm.shape}')
+        # (b_sz, n_nodes, N_{F}, D)
+        # (b_sz, n_nodes, -1, d)
         sim = torch.cosine_similarity(self.filler_emb.weight[None, None, :, :],
-                                      vsa.unsqueeze(-2), dim=-1) # (1, 1, N_{F}, D), (B, 2**curr_depth - 1, 1, D) ->  (B, 2**curr_depth - 1, N_{F})          
+                                      level_vsas.unsqueeze(-2), dim=-1) # (1, 1, N_{F}, D), (B, 2**curr_depth - 1, 1, D) ->  (B, 2**curr_depth - 1, N_{F})          
+        print(f'Shape of sim is {sim.shape}')
+        print(f'Size of input vsa {level_vsas.unsqueeze(-2).shape}, size of filler emb {self.filler_emb.weight[None, None, :, :].shape}')
         sim = torch.where((norm < eps).expand(-1, -1, self.n_fillers), torch.zeros_like(sim), sim)
+        print(f'Sim is {sim}')
         return sim
     
     def decode_vsymbolic(self, vsa: torch.Tensor, return_distances: bool=True,
@@ -161,7 +168,11 @@ class VSA(VectorSymbolicConverter):
             vsa (torch.Tensor): a tensor of dimension (B, D) representing a VSA representation of a recursively defined binary tree
             return_distances (bool): if true, return a tensor of dimension (n_nodes, N_{F}) representing the distances between the 
             filler bound to role i, and each of the N_{F} fillers
+        Returns
+            final (torch.Tensor) tensor of dimension (B, 2**max_depth-1, N_{F})
         '''
+        
+        print(f'Input vsa is {vsa} with shape {vsa.shape}')
         
         if not return_distances:
             raise ValueError(f'For VSAs, we cannot directly extract out the filler embedding!')
@@ -176,7 +187,7 @@ class VSA(VectorSymbolicConverter):
             inv_root_role = self.vsa_operator.inverse_op(self.root_role)
             vsa = self.vsa_operator.unbind_op(vsa, inv_root_role)
         
-        level_sims.append(self._decode_level(vsa, eps).unsqueeze(1)) # (b_sz, 1, N_{F})
+        level_sims.append(self._decode_level(vsa.unsqueeze(1), eps)) # (b_sz, 1, N_{F})
         
         for d in range(1, self.max_d - 1): 
             # unbind left subtree

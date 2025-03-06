@@ -54,7 +54,7 @@ def get_appx_inv(a):
     """
     return torch.roll(torch.flip(a, dims=[-1]), 1,-1)
 
-def get_inv(a: torch.DoubleTensor, eps: 1e-8):
+def get_inv(a: torch.DoubleTensor, eps: float=1e-8):
     """
     Compute exact inverse of vector a.
     Old method from authors:
