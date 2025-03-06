@@ -5,10 +5,10 @@ import torch.nn as nn
 class VectorSymbolicConverter(nn.Module, metaclass=abc.ABCMeta):
     
     def forward(self, trees: torch.Tensor) -> torch.Tensor: 
-        return self.encode_tree_as_vector_symbolic(trees)
+        return self.encode_stree(trees)
     
     @abc.abstractmethod
-    def encode_tree_as_vector_symbolic(self, trees: torch.Tensor) -> torch.Tensor: 
+    def encode_stree(self, trees: torch.Tensor) -> torch.Tensor: 
         '''
         Given a tensor representation of trees, converts it to the appropriate vector-symbolic
         representation

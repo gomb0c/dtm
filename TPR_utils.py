@@ -24,14 +24,14 @@ class TPRConverter(VectorSymbolicConverter):
         self.filler_emb.weight.data[0, :] = 0
         nn.init.orthogonal_(self.role_emb.weight, gain=1)
 
-    def encode_tree_as_vector_symbolic(self, trees):
+    def encode_stree(self, trees):
         '''
         Given a binary tree represented by a tensor, construct the TPR
         '''
         x = self.filler_emb(trees)
         return torch.einsum('brm,rn->bmn', x, self.role_emb.weight)
     
-    def decode_vector_symbolic_to_tree(self, tpr_tensor, return_similarities=False):
+    def decode_vsymbolic(self, tpr_tensor, return_similarities=False):
         '''
         Given a TPR of dimension (B, D_{F}, D_{R}), unbind it into the underlying fillers
         Produces output of shape (B, N_{R], D_{F}}) if quantise_fillers is False

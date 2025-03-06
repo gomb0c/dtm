@@ -72,7 +72,7 @@ class VSA(VectorSymbolicConverter):
                                                             dim=0), 
                                                requires_grad=False) 
     
-    def encode_tree_as_vector_symbolic(self, trees: torch.Tensor) -> torch.Tensor: 
+    def encode_stree(self, trees: torch.Tensor) -> torch.Tensor: 
         '''
         inputs: 
             trees (torch.Tensor) corresponds to a tensor of dimension (B, 2**max_depth-1),

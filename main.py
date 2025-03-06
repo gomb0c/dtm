@@ -299,8 +299,8 @@ for epoch_i in range(args.epoch):
         bsz = batch['input'].size(0)
         optimizer.zero_grad(set_to_none=True)
         # Use an agent
-        output, _, entropies = dtm(vector_symbolic_converter.encode_tree_as_vector_symbolic(batch['input']))
-        decoded = vector_symbolic_converter.decode_vector_symbolic_to_tree(output, decode=True)
+        output, _, entropies = dtm(vector_symbolic_converter.encode_stree(batch['input']))
+        decoded = vector_symbolic_converter.decode_vsymbolic(output, decode=True)
 
         fully_decoded = DecodedTPR2Tree(decoded)
 
@@ -373,7 +373,7 @@ for epoch_i in range(args.epoch):
             for i, batch in enumerate(valid_loader):
                 bsz = batch['input'].size(0)
                 is_debug_step = i == 0 if args.debug else False
-                output, debug_info, entropies = dtm(tpr(batch['input']), debug=is_debug_step)
+                output, debug_info, entropies = dtm(vector_symbolic_converter.encode_stree(batch['input']), debug=is_debug_step)
 
                 if is_debug_step:
                     formatted_tree = TreePrettyPrinter(Tree.fromstring(BatchSymbols2NodeTree(batch['output'], dtm.ind2vocab)[0].str()))
@@ -384,7 +384,7 @@ for epoch_i in range(args.epoch):
                         
                     writer.add_text('Epoch {}'.format(epoch_i), '\n\n'.join(debug_text), global_step=step)
                     
-                decoded = vector_symbolic_converter.decode_vector_symbolic_to_tree(output, decode=True)
+                decoded = vector_symbolic_converter.decode_vsymbolic(output, decode=True)
 
                 fully_decoded = DecodedTPR2Tree(decoded)
 
@@ -449,9 +449,9 @@ def calculate_accuracy(data_loader, data_name):
         total = 0
         for i, batch in enumerate(data_loader):
             bsz = batch['input'].size(0)
-            output, debug_info, _ = dtm(vector_symbolic_converter.encode_tree_as_vector_symbolic(batch['input']))
+            output, debug_info, _ = dtm(vector_symbolic_converter.encode_stree(batch['input']))
 
-            fully_decoded = DecodedTPR2Tree(vector_symbolic_converter.decode_vector_symbolic_to_tree(output, decode=True))
+            fully_decoded = DecodedTPR2Tree(vector_symbolic_converter.decode_vsymbolic(output, decode=True))
 
             correct += (fully_decoded == batch['output']).all(dim=-1).sum().item()
             total += batch['output'].size(0)
