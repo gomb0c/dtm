@@ -4,7 +4,7 @@ import torch.nn as nn
 import constants.vsa_types as VSATypes
 import constants.positions as Positions
 import hrr_ops as hrr_ops
-from representation import VectorSymbolicConverter
+from vector_symbolic_utils import VectorSymbolicConverter
 
 '''
 To think about: maybe orthogonalise the hypervec space based on the number of actual fillers (not including empty filler?)
@@ -22,7 +22,7 @@ class VSAOps():
     
 class VSA(VectorSymbolicConverter): 
     def __init__(self, n_fillers: int, dim: int, 
-                 vsa_operator: VSAOps,
+                 vsa_operator: VSAOps, max_d: int,
                  bind_root: bool=False,
                  strict_orth: bool=False) -> None: 
         super().__init__() 
@@ -37,6 +37,8 @@ class VSA(VectorSymbolicConverter):
         self.bind_root = bind_root
         self.vsa_operator = vsa_operator 
         self.n_roles = 2 + int(bind_root)
+        self.n_fillers = n_fillers
+        self.max_d = max_d
         
         # initialise all seed hypervectors according to https://arxiv.org/pdf/2109.02157
         # use unitary seed hypervectors 
@@ -133,8 +135,71 @@ class VSA(VectorSymbolicConverter):
         
         return vsa_reps[:, 0, :] # corresponds to vsa rep of root
     
-    def decode_vector_symbolic_to_tree(self, vsa: torch.Tensor, quantise_fillers: bool=False) -> torch.Tensor: 
-        pass
+    def _decode_level(self, vsa: torch.Tensor, eps: float) -> torch.Tensor: 
+        ''' 
+        Given a vsa representation of a tree, extracts cosine similarity between values 'bound' to a node
+        and the filler embeddings 
+        
+        Inputs: 
+            vsa (torch.Tensor) of dimension (B, 2**curr_depth - 1, D)
+        '''
+        norm = torch.norm(vsa, dim=-1, keepdim=True)                                 # (B, 2**curr_depth - 1, 1)
+        sim = torch.cosine_similarity(self.filler_dict.weight[None, None, :, :],
+                                      vsa.unsqueeze(-2), dim=-1) # (1, 1, N_{F}, D), (B, 2**curr_depth - 1, 1, D) ->  (B, 2**curr_depth - 1, N_{F})          
+        sim = torch.where((norm < eps).expand(-1, -1, self.n_fillers), torch.zeros_like(sim), sim)
+        return sim
+    
+    def decode_vector_symbolic_to_tree(self, vsa: torch.Tensor, return_distances: bool=True,
+                                       eps: float=1e-10) -> torch.Tensor: 
+        ''''
+        Given a vsa, decodes the vsa into either 1) a set of N_{R} D-dimensional filler embeddings (if quantise_fillers is False),
+        where result[i] is a D-dimensional filler embedding for the i-th position in the tree (where the tree is traversed in a BFS)
+        or 2) a tensor of dimension (n_nodes, N_{F}), where result[i][j] desnotes the cosine similarities between the filler bound 
+        to position i and the j-th filler
+        
+        Inputs: 
+            vsa (torch.Tensor): a tensor of dimension (B, D) representing a VSA representation of a recursively defined binary tree
+            return_distances (bool): if true, return a tensor of dimension (n_nodes, N_{F}) representing the distances between the 
+            filler bound to role i, and each of the N_{F} fillers
+        '''
+        
+        if not return_distances:
+            raise ValueError(f'For VSAs, we cannot directly extract out the filler embedding!')
+        
+        b_sz = vsa.shape[0]
+        level_sims = []
+        inv_left_child = self.vsa_operator.inverse_op(self.left_role)
+        inv_right_child = self.vsa_operator.inverse_op(self.right_role)
+        
+        # if root filler is bound to the special root role, we first perform unbinding of this
+        if self.bind_root: 
+            inv_root_role = self.vsa_operator.inverse_op(self.root_role)
+            vsa = self.vsa_operator.unbind_op(vsa, inv_root_role)
+        
+        level_sims.append(self._decode_level(vsa, eps).unsqueeze(1)) # (b_sz, 1, N_{F})
+        
+        for d in range(1, self.max_d - 1): 
+            # unbind left subtree
+            left_st = self.vsa_operator.unbind_op(vsa, inv_left_child)
+            # unbind right subtree
+            right_st = self.vsa_operator.unbind_op(vsa, inv_right_child)
+            # concatenate to get all nodes at this level 
+            next_level = torch.cat([left_st, right_st], dim=0)
+            # decode
+            sims_level_d = self._decode_level(next_level, eps)
+            # reshape to effectively perform BFS traversal
+            sims_level_d = sims_level_d.view(b_sz, 2**d, self.n_fillers)
+            level_sims.append(sims_level_d) 
+            vsa = next_level
+            
+        # concatenate similarity tensor along node dim 
+        final = torch.cat(level_sims, dim=1) # (b_sz, 2**depth-1, N_{F})
+        return final 
+            
+        
+        
+        
+        
                 
 class VSAConsNet(nn.Module): 
     def __init__(self, vsa_ops: VSAOps, left_role: torch.Tensor, right_role: torch.Tensor, 

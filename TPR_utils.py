@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from node import Node
-from representation import VectorSymbolicConverter
+from vector_symbolic_utils import VectorSymbolicConverter
 
 class TPRConverter(VectorSymbolicConverter):
     def __init__(self, num_fillers, num_roles, d_filler=32, d_role=32) -> None:
@@ -30,7 +30,7 @@ class TPRConverter(VectorSymbolicConverter):
         x = self.filler_emb(trees)
         return torch.einsum('brm,rn->bmn', x, self.role_emb.weight)
     
-    def decode_vector_symbolic_to_tree(self, tpr_tensor, quantise_fillers=False):
+    def decode_vector_symbolic_to_tree(self, tpr_tensor, return_similarities=False):
         '''
         Given a TPR of dimension (B, D_{F}, D_{R}), unbind it into the underlying fillers
         Produces output of shape (B, N_{R], D_{F}}) if quantise_fillers is False
@@ -38,7 +38,7 @@ class TPRConverter(VectorSymbolicConverter):
             (bins filler vectors into the N_{F} possible filler bins)
         '''
         unbinded = torch.einsum('bmn,rn->brm', tpr_tensor, self.role_emb.weight)
-        if not quantise_fillers:
+        if not return_similarities:
             return unbinded
         return torch.einsum('brm,fm->brf', unbinded, self.filler_emb.weight)
 

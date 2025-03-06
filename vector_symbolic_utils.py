@@ -20,17 +20,17 @@ class VectorSymbolicConverter(nn.Module, metaclass=abc.ABCMeta):
         return 
     
     @abc.abstractmethod 
-    def decode_vector_symbolic_to_tree(self, repns: torch.Tensor, quantised_fillers: bool) -> torch.Tensor: 
+    def decode_vector_symbolic_to_tree(self, repns: torch.Tensor, return_similarities: bool) -> torch.Tensor: 
         '''
         Converts the vector-symbolic representation of a tree to a tensor of fillers (if decode is False)
-        of dimension (B, N_{R}, D_{F}), or fuzzy one-hot representation of the tree of dimension (B, N_{R}, N_{F})
-        (if quantised_fillers is True)
+        of dimension (B, N_{R}, D_{F}), or matrix of distances of dimension (B, N_{R}, N_{F})
+        (if return_similarities is True)
         
         inputs:
             repns (torch.Tensor): corresponds to the TPR or VSA representation of shape
                 (B, D_{F}, D_{R}) for TPRs, and (B, hypervec_dim) for VSAs
-            quantised_fillers (bool): whether or not to quantise the $N_{R}$ fillers 
-            into $N_{F}$ bins by taking the similarity between the filler values with the fillers in the vocabulary
+            return_similarities (bool): whether or not to return the similarities between each of the $N_{R}$ 
+            bound fillers with the N_{F} fillers in the dictionary
         '''
         return
     
