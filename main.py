@@ -28,7 +28,7 @@ except BaseException as ex:
 from data import BinaryT2TDataset
 from TPR_utils import TPR, DecodedTPR2Tree
 from models import *
-from representation import VectorSymbolicConverter
+from vector_symbolic_utils import VectorSymbolicConverter
 
 
 def calculate_loss(decoded):
@@ -226,14 +226,14 @@ if d_filler is None:
 if args.use_vsas:
     raise NotImplementedError('VSA method not yet implemented!!')
 else:
-    tpr = TPR(args, num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
+    vector_symbolic_converter = TPR(args, num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
             d_filler=d_filler, d_role=d_role).to(device=device)
 
-dtm = DiffTreeMachine(d_filler, d_role, args.ctrl_hidden_dim, tpr.role_emb, args.dtm_steps,
+dtm = DiffTreeMachine(d_filler, d_role, args.ctrl_hidden_dim, args.role_emb, args.dtm_steps,
                       args.router_hidden_dim, nhead=args.transformer_nheads,
                       dropout=args.router_dropout, transformer_activation=args.transformer_activation,
                       transformer_norm_first=args.transformer_norm_first, op_dist_fn=args.op_dist_fn, arg_dist_fn=args.arg_dist_fn,
-                      ind2vocab=train_data.ind2vocab, tpr=tpr,
+                      ind2vocab=train_data.ind2vocab, vector_symbolic_converter=vector_symbolic_converter,
                       predefined_operations_are_random=args.predefined_operations_are_random).to(device=device)
 
 params = list(dtm.parameters())

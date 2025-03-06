@@ -20,7 +20,7 @@ class VectorSymbolicConverter(nn.Module, metaclass=abc.ABCMeta):
         return 
     
     @abc.abstractmethod 
-    def decode_vector_symbolic_to_tree(self, repns: torch.Tensor, return_similarities: bool) -> torch.Tensor: 
+    def decode_vs_to_tree(self, repns: torch.Tensor, return_similarities: bool) -> torch.Tensor: 
         '''
         Converts the vector-symbolic representation of a tree to a tensor of fillers (if decode is False)
         of dimension (B, N_{R}, D_{F}), or matrix of distances of dimension (B, N_{R}, N_{F})
@@ -35,3 +35,17 @@ class VectorSymbolicConverter(nn.Module, metaclass=abc.ABCMeta):
         return
     
     
+class VectorSymbolicManipulator(nn.Module, metaclass=abc.ABCMeta): 
+    
+    @abc.abstractmethod
+    def apply_car(self, tree_mem: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+        return 
+    
+    @abc.abstractmethod
+    def apply_cdr(self, tree_mem: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+        return 
+    
+    @abc.abstractmethod
+    def apply_cons(self, tree_mem: torch.Tensor, weights_l: torch.Tensor, 
+                   weights_r: torch.Tensor, root_filler: torch.Tensor) -> torch.Tensor:
+        return 

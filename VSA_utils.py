@@ -4,7 +4,7 @@ import torch.nn as nn
 import constants.vsa_types as VSATypes
 import constants.positions as Positions
 import hrr_ops as hrr_ops
-from vector_symbolic_utils import VectorSymbolicConverter
+from vector_symbolic_utils import VectorSymbolicConverter, VectorSymbolicManipulator
 
 '''
 To think about: maybe orthogonalise the hypervec space based on the number of actual fillers (not including empty filler?)
@@ -149,7 +149,7 @@ class VSA(VectorSymbolicConverter):
         sim = torch.where((norm < eps).expand(-1, -1, self.n_fillers), torch.zeros_like(sim), sim)
         return sim
     
-    def decode_vector_symbolic_to_tree(self, vsa: torch.Tensor, return_distances: bool=True,
+    def decode_vs_to_tree(self, vsa: torch.Tensor, return_distances: bool=True,
                                        eps: float=1e-10) -> torch.Tensor: 
         ''''
         Given a vsa, decodes the vsa into either 1) a set of N_{R} D-dimensional filler embeddings (if quantise_fillers is False),
@@ -197,9 +197,20 @@ class VSA(VectorSymbolicConverter):
         return final 
             
         
-        
-        
-        
+class VSAManipulator(VectorSymbolicManipulator): 
+    def __init__(self, vsa_ops: VSAOps, left_role: torch.Tensor, right_role: torch.Tensor, root_role: torch.Tensor) -> None: 
+        self.cons_net = VSAConsNet(vsa_ops, left_role, right_role, root_role)
+        self.car_net = VSACarNet(vsa_ops, left_role)
+        self.cdr_net = VSACdrNet(vsa_ops, right_role)
+    
+    def apply_car(self, tree_mem, weights):
+        return self.car_net(tree_mem, weights)
+    
+    def apply_cdr(self, tree_mem, weights):
+        return self.car_net(tree_mem, weights)
+    
+    def apply_cons(self, tree_mem, weights_l, weights_r, root_filler):
+        return self.car_net(tree_mem, weights_l, weights_r, root_filler)
                 
 class VSAConsNet(nn.Module): 
     def __init__(self, vsa_ops: VSAOps, left_role: torch.Tensor, right_role: torch.Tensor, 

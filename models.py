@@ -7,13 +7,14 @@ from nltk import TreePrettyPrinter, Tree
 
 from TPR_utils import BatchSymbols2NodeTree, DecodedTPR2Tree, build_D, build_E
 import torch.utils.checkpoint as checkpoint
+from vector_symbolic_utils import VectorSymbolicManipulator
 
 
 class DiffTreeMachine(nn.Module):
     def __init__(self, d_filler, d_role, d_model, role_emb, steps, dim_feedforward, nhead=4, dropout=.1,
                  transformer_activation='gelu', layer_norm_eps=1e-5, transformer_norm_first=True,
-                 transformer_layers_per_step=1, op_dist_fn='softmax', arg_dist_fn='softmax', ind2vocab=None, tpr=None,
-                 predefined_operations_are_random=False):
+                 transformer_layers_per_step=1, op_dist_fn='softmax', arg_dist_fn='softmax', ind2vocab=None, 
+                 vector_symbolic_converter=None,predefined_operations_are_random=False):
         super().__init__()
         d_tpr = d_filler * d_role
 
@@ -35,7 +36,7 @@ class DiffTreeMachine(nn.Module):
 
         # ind2vocab will be used for debugging in forward()
         self.ind2vocab = ind2vocab
-        self.tpr = tpr
+        self.vector_symbolic_converter = vector_symbolic_converter
 
     def forward(self, input_tpr, debug=False, calculate_entropy=False):
         debug_writer = [] if debug else None
@@ -70,7 +71,7 @@ class DiffTreeMachine(nn.Module):
                 output_string = 'Layer {}:\nMemory:'.format(step)
                 debug_writer.append(output_string)
                 # Use the batch dimension to decode previous layers in memory
-                x_decoded = DecodedTPR2Tree(self.tpr.unbind(memory[0], decode=True))
+                x_decoded = DecodedTPR2Tree(self.vector_symbolic_converter.decode_vs_to_tree(memory[0], True))
                 x_tree = BatchSymbols2NodeTree(x_decoded, self.ind2vocab)
                 for tree in x_tree:
                     if tree:
@@ -95,7 +96,7 @@ class DiffTreeMachine(nn.Module):
                 )
                 
                 fully_decoded = DecodedTPR2Tree(
-                    self.tpr.unbind(new_tree[0].unsqueeze(0), decode=True))
+                    self.vector_symbolic_converter.decode_vs_to_tree(new_tree[0].unsqueeze(0), True))
                 debug_tree = BatchSymbols2NodeTree(fully_decoded, self.ind2vocab)[0]
                 debug_writer.append('Output: ')
                 if not debug_tree:
@@ -178,26 +179,11 @@ class NeuralTreeAgent(nn.Module):
 
 
 class DiffTreeInterpreter(nn.Module):
-    def __init__(self, role_emb, num_ops=3, predefined_operations_are_random=False):
+    def __init__(self, vs_manipulator: VectorSymbolicManipulator):
         super().__init__()
+        self.vs_manipulator = vs_manipulator
 
-        if predefined_operations_are_random:
-            d_role = role_emb.embedding_dim
-            D_l = nn.Parameter(role_emb.weight.new_empty(d_role, d_role))
-            D_r = nn.Parameter(role_emb.weight.new_empty(d_role, d_role))
-            E_l = nn.Parameter(role_emb.weight.new_empty(d_role, d_role))
-            E_r = nn.Parameter(role_emb.weight.new_empty(d_role, d_role))
-            nn.init.kaiming_uniform_(D_l, a=math.sqrt(5))
-            nn.init.kaiming_uniform_(D_r, a=math.sqrt(5))
-            nn.init.kaiming_uniform_(E_l, a=math.sqrt(5))
-            nn.init.kaiming_uniform_(E_r, a=math.sqrt(5))
-        else:
-            D_l, D_r = build_D(role_emb)
-            E_l, E_r = build_E(role_emb)
-        self.car_net = BBCarNet(D_l)
-        self.cdr_net = BBCdrNet(D_r)
-        self.cons_net = BBConsNet(E_l, E_r, role_emb.weight[0])
-        self.num_ops = num_ops
+        
 
     def forward(self, memory, arg_weights, root_filler, op_dist, calculate_entropy=False):
         memory_shape = list(memory.shape)
@@ -210,53 +196,14 @@ class DiffTreeInterpreter(nn.Module):
         cons_arg1_weights = arg_weights[:, :, 2]
         cons_arg2_weights = arg_weights[:, :, 3]
 
-        full_output[:, 0] = self.car_net(memory,
+        full_output[:, 0] = self.vs_manipulator.apply_car(memory,
                                          arg1_weight=car_arg_weights)
-        full_output[:, 1] = self.cdr_net(memory,
+        full_output[:, 1] = self.vs_manipulator.apply_cdr(memory,
                                          arg1_weight=cdr_arg_weights)
 
         # Each of these functions has a large memory usage for calculating the blended argument
-        full_output[:, 2] = self.cons_net(memory, arg1_weight=cons_arg1_weights, arg2_weight=cons_arg2_weights,
+        full_output[:, 2] = self.vs_manipulator.apply_cons(memory, arg1_weight=cons_arg1_weights, arg2_weight=cons_arg2_weights,
                                           root_filler=root_filler)
 
         return torch.einsum('bnfr,bn->bfr', full_output, op_dist)
 
-
-class BBCarNet(nn.Module):
-    def __init__(self, D_0) -> None:
-        super().__init__()
-        # hardcoded op
-        self.car_weight = D_0
-
-    def forward(self, x, arg1_weight):
-        # batch, length, filler, role x batch, length
-        arg1 = torch.einsum('blfr,bl->bfr', x, arg1_weight)
-        # batch, filler, role_from x role_[t]o, role_from
-        return torch.einsum('bfr,tr->bft', arg1, self.car_weight)
-
-
-class BBCdrNet(nn.Module):
-    def __init__(self, D_1) -> None:
-        super().__init__()
-        # hardcoded op
-        self.cdr_weight = D_1
-
-    def forward(self, x, arg1_weight):
-        # batch, length, filler, role
-        arg1 = torch.einsum('blfr,bl->bfr', x, arg1_weight)
-        return F.linear(arg1, self.cdr_weight)
-
-
-class BBConsNet(nn.Module):
-    def __init__(self, E_0, E_1, root_role) -> None:
-        super().__init__()
-        # hardcoded op
-        self.cons_l = E_0
-        self.cons_r = E_1
-        self.root_role = root_role
-
-    def forward(self, x, arg1_weight, arg2_weight, root_filler):
-        # batch, length, filler, role
-        arg1 = torch.einsum('blfr,bl->bfr', x, arg1_weight)
-        arg2 = torch.einsum('blfr,bl->bfr', x, arg2_weight)
-        return F.linear(arg1, self.cons_l) + F.linear(arg2, self.cons_r) + torch.einsum('bf,r->bfr', root_filler, self.root_role)
