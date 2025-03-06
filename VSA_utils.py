@@ -27,9 +27,9 @@ class VSA(VectorSymbolicConverter):
                  strict_orth: bool=False) -> None: 
         super().__init__() 
         self.strict_orth = strict_orth 
-        self.filler_dict = nn.Embedding(num_embeddings=n_fillers,
+        self.filler_emb = nn.Embedding(num_embeddings=n_fillers,
                                         embedding_dim=dim)
-        self.role_dict = nn.Embedding(num_embeddings=2 + int(bind_root), 
+        self.role_emb = nn.Embedding(num_embeddings=2 + int(bind_root), 
                                       embedding_dim=dim)
                 
         self.hypervec_dim = dim
@@ -43,32 +43,32 @@ class VSA(VectorSymbolicConverter):
         # initialise all seed hypervectors according to https://arxiv.org/pdf/2109.02157
         # use unitary seed hypervectors 
         
-        self.filler_dict.requires_grad = False 
-        self.filler_dict.weight.requires_grad = False 
-        self.role_dict.requires_grad = False
-        self.role_dict.weight.requires_grad = False 
+        self.filler_emb.requires_grad = False 
+        self.filler_emb.weight.requires_grad = False 
+        self.role_emb.requires_grad = False
+        self.role_emb.weight.requires_grad = False 
         
         self.init_hypervecs()
-        self.left_role = nn.Parameter(self.role_dict.weight[Positions.LEFT_INDEX], requires_grad=False)
-        self.right_role = nn.Parameter(self.role_dict.weight[Positions.RIGHT_INDEX], requires_grad=False)
-        self.root_role = nn.Parameter(self.role_dict.weight[Positions.ROOT_INDEX], requires_grad=False) if self.bind_root else None
+        self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX], requires_grad=False)
+        self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX], requires_grad=False)
+        self.root_role = nn.Parameter(self.role_emb.weight[Positions.ROOT_INDEX], requires_grad=False) if self.bind_root else None
     
     def _set_hypervecs(self, filler_weights: torch.Tensor=None, role_weights: torch.Tensor=None) -> None:
         ''' For testing purposes '''
         if filler_weights is not None: 
-            self.filler_dict.weight = nn.Parameter(filler_weights, requires_grad=False)
+            self.filler_emb.weight = nn.Parameter(filler_weights, requires_grad=False)
         if role_weights is not None: 
-            self.role_dict.weight = nn.Parameter(role_weights, requires_grad=False)
-            self.left_role = nn.Parameter(self.role_dict.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
-            self.right_role = nn.Parameter(self.role_dict.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
-            self.root_role = nn.Parameter(self.role_dict.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
+            self.role_emb.weight = nn.Parameter(role_weights, requires_grad=False)
+            self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
+            self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
+            self.root_role = nn.Parameter(self.role_emb.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
     
     def init_hypervecs(self) -> None:
         hypervecs = self.vsa_operator.generator(n_vecs=self.n_hypervecs,
                                                    dims=self.hypervec_dim,
                                                    strict_orth=self.strict_orth)
-        self.role_dict.weight = nn.Parameter(hypervecs[:self.n_roles], requires_grad=False)
-        self.filler_dict.weight = nn.Parameter(torch.concat((torch.zeros(size=(1, self.hypervec_dim), device=hypervecs.device), hypervecs[self.n_roles:]),
+        self.role_emb.weight = nn.Parameter(hypervecs[:self.n_roles], requires_grad=False)
+        self.filler_emb.weight = nn.Parameter(torch.concat((torch.zeros(size=(1, self.hypervec_dim), device=hypervecs.device), hypervecs[self.n_roles:]),
                                                             dim=0), 
                                                requires_grad=False) 
     
@@ -97,7 +97,7 @@ class VSA(VectorSymbolicConverter):
                 continue 
             
             # filler vectors for valid batch entries at index j
-            f = self.filler_dict.weight[vocab_idxs[valid_mask].long()] 
+            f = self.filler_emb.weight[vocab_idxs[valid_mask].long()] 
             #print(f'Shape of f is {f.shape}')
             
             vsa_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
@@ -144,12 +144,12 @@ class VSA(VectorSymbolicConverter):
             vsa (torch.Tensor) of dimension (B, 2**curr_depth - 1, D)
         '''
         norm = torch.norm(vsa, dim=-1, keepdim=True)                                 # (B, 2**curr_depth - 1, 1)
-        sim = torch.cosine_similarity(self.filler_dict.weight[None, None, :, :],
+        sim = torch.cosine_similarity(self.filler_emb.weight[None, None, :, :],
                                       vsa.unsqueeze(-2), dim=-1) # (1, 1, N_{F}, D), (B, 2**curr_depth - 1, 1, D) ->  (B, 2**curr_depth - 1, N_{F})          
         sim = torch.where((norm < eps).expand(-1, -1, self.n_fillers), torch.zeros_like(sim), sim)
         return sim
     
-    def decode_vs_to_tree(self, vsa: torch.Tensor, return_distances: bool=True,
+    def decode_vsymbolic(self, vsa: torch.Tensor, return_distances: bool=True,
                                        eps: float=1e-10) -> torch.Tensor: 
         ''''
         Given a vsa, decodes the vsa into either 1) a set of N_{R} D-dimensional filler embeddings (if quantise_fillers is False),
@@ -199,6 +199,7 @@ class VSA(VectorSymbolicConverter):
         
 class VSAManipulator(VectorSymbolicManipulator): 
     def __init__(self, vsa_ops: VSAOps, left_role: torch.Tensor, right_role: torch.Tensor, root_role: torch.Tensor) -> None: 
+        super().__init__()
         self.cons_net = VSAConsNet(vsa_ops, left_role, right_role, root_role)
         self.car_net = VSACarNet(vsa_ops, left_role)
         self.cdr_net = VSACdrNet(vsa_ops, right_role)

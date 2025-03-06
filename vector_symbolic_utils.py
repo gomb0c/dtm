@@ -20,7 +20,7 @@ class VectorSymbolicConverter(nn.Module, metaclass=abc.ABCMeta):
         return 
     
     @abc.abstractmethod 
-    def decode_vs_to_tree(self, repns: torch.Tensor, return_similarities: bool) -> torch.Tensor: 
+    def decode_vsymbolic(self, repns: torch.Tensor, return_similarities: bool) -> torch.Tensor: 
         '''
         Converts the vector-symbolic representation of a tree to a tensor of fillers (if decode is False)
         of dimension (B, N_{R}, D_{F}), or matrix of distances of dimension (B, N_{R}, N_{F})

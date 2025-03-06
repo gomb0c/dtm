@@ -21,7 +21,7 @@ class DiffTreeMachine(nn.Module):
         self.ctrl_net = nn.Linear(d_tpr, d_model)
         self.num_ops=3
 
-        self.interpreter = DiffTreeInterpreter(vector_symbolic_manipulator)
+        self.interpreter = DiffTreeInterpreter(vector_symbolic_manipulator, self.num_ops)
 
         self.steps = steps
 
@@ -70,7 +70,7 @@ class DiffTreeMachine(nn.Module):
                 output_string = 'Layer {}:\nMemory:'.format(step)
                 debug_writer.append(output_string)
                 # Use the batch dimension to decode previous layers in memory
-                x_decoded = DecodedTPR2Tree(self.vector_symbolic_converter.decode_vs_to_tree(memory[0], True))
+                x_decoded = DecodedTPR2Tree(self.vector_symbolic_converter.decode_vsymbolic(memory[0], True))
                 x_tree = BatchSymbols2NodeTree(x_decoded, self.ind2vocab)
                 for tree in x_tree:
                     if tree:
@@ -95,7 +95,7 @@ class DiffTreeMachine(nn.Module):
                 )
                 
                 fully_decoded = DecodedTPR2Tree(
-                    self.vector_symbolic_converter.decode_vs_to_tree(new_tree[0].unsqueeze(0), True))
+                    self.vector_symbolic_converter.decode_vsymbolic(new_tree[0].unsqueeze(0), True))
                 debug_tree = BatchSymbols2NodeTree(fully_decoded, self.ind2vocab)[0]
                 debug_writer.append('Output: ')
                 if not debug_tree:
@@ -178,9 +178,10 @@ class NeuralTreeAgent(nn.Module):
 
 
 class DiffTreeInterpreter(nn.Module):
-    def __init__(self, vs_manipulator: VectorSymbolicManipulator):
+    def __init__(self, vs_manipulator: VectorSymbolicManipulator, num_ops: int):
         super().__init__()
         self.vs_manipulator = vs_manipulator
+        self.num_ops = num_ops
 
         
 
@@ -196,12 +197,12 @@ class DiffTreeInterpreter(nn.Module):
         cons_arg2_weights = arg_weights[:, :, 3]
 
         full_output[:, 0] = self.vs_manipulator.apply_car(memory,
-                                         arg1_weight=car_arg_weights)
+                                         weights=car_arg_weights)
         full_output[:, 1] = self.vs_manipulator.apply_cdr(memory,
-                                         arg1_weight=cdr_arg_weights)
+                                         weights=cdr_arg_weights)
 
         # Each of these functions has a large memory usage for calculating the blended argument
-        full_output[:, 2] = self.vs_manipulator.apply_cons(memory, arg1_weight=cons_arg1_weights, arg2_weight=cons_arg2_weights,
+        full_output[:, 2] = self.vs_manipulator.apply_cons(memory, weights_l=cons_arg1_weights, weights_r=cons_arg2_weights,
                                           root_filler=root_filler)
 
         return torch.einsum('bnfr,bn->bfr', full_output, op_dist)

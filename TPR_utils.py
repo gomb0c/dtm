@@ -113,6 +113,7 @@ def BatchSymbols2NodeTree(decoded_tpr_batch, i2v):
 
 class TPRManipulator(VectorSymbolicManipulator): 
     def __init__(self, role_emb: torch.Tensor, num_ops: int=3, predefined_ops_random: bool=False) -> None: 
+        super().__init__()
         if predefined_ops_random:
             d_role = role_emb.embedding_dim
             D_l = nn.Parameter(role_emb.weight.new_empty(d_role, d_role))

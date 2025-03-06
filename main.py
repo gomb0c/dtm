@@ -226,12 +226,12 @@ if d_filler is None:
 if args.use_vsas:
     raise NotImplementedError('VSA method not yet implemented!!')
 else:
-    vector_symbolic_converter = TPRConverter(args, num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
+    vector_symbolic_converter = TPRConverter(num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
             d_filler=d_filler, d_role=d_role).to(device=device)
     vector_symbolic_manipulator = TPRManipulator(role_emb=vector_symbolic_converter.role_emb,
                                                  num_ops=3, predefined_ops_random=args.predefined_ops_random)
 
-dtm = DiffTreeMachine(d_filler, d_role, args.ctrl_hidden_dim, args.role_emb, args.dtm_steps,
+dtm = DiffTreeMachine(d_filler, d_role, args.ctrl_hidden_dim, vector_symbolic_converter.role_emb, args.dtm_steps,
                       args.router_hidden_dim, nhead=args.transformer_nheads,
                       dropout=args.router_dropout, transformer_activation=args.transformer_activation,
                       transformer_norm_first=args.transformer_norm_first, op_dist_fn=args.op_dist_fn, arg_dist_fn=args.arg_dist_fn,
@@ -300,7 +300,7 @@ for epoch_i in range(args.epoch):
         optimizer.zero_grad(set_to_none=True)
         # Use an agent
         output, _, entropies = dtm(vector_symbolic_converter.encode_stree(batch['input']))
-        decoded = vector_symbolic_converter.decode_vsymbolic(output, decode=True)
+        decoded = vector_symbolic_converter.decode_vsymbolic(output, return_similarities=True)
 
         fully_decoded = DecodedTPR2Tree(decoded)
 
@@ -384,7 +384,7 @@ for epoch_i in range(args.epoch):
                         
                     writer.add_text('Epoch {}'.format(epoch_i), '\n\n'.join(debug_text), global_step=step)
                     
-                decoded = vector_symbolic_converter.decode_vsymbolic(output, decode=True)
+                decoded = vector_symbolic_converter.decode_vsymbolic(output, return_similarities=True)
 
                 fully_decoded = DecodedTPR2Tree(decoded)
 
@@ -451,7 +451,7 @@ def calculate_accuracy(data_loader, data_name):
             bsz = batch['input'].size(0)
             output, debug_info, _ = dtm(vector_symbolic_converter.encode_stree(batch['input']))
 
-            fully_decoded = DecodedTPR2Tree(vector_symbolic_converter.decode_vsymbolic(output, decode=True))
+            fully_decoded = DecodedTPR2Tree(vector_symbolic_converter.decode_vsymbolic(output, return_similiarities=True))
 
             correct += (fully_decoded == batch['output']).all(dim=-1).sum().item()
             total += batch['output'].size(0)

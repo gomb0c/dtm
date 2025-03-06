@@ -99,9 +99,9 @@ class BinaryT2TDataset(Dataset):
         transformed_sample['input'] = self.text_to_tensors(sample['input'])
         transformed_sample['output'] = self.text_to_tensors(sample['output'])
         
-        input = sample['input']
-        transformed = transformed_sample['input']
-        print(f'Sample is {input}, transformed is {transformed}')
+        #input = sample['input']
+        #transformed = transformed_sample['input']
+        #print(f'Sample is {input}, transformed is {transformed}')
         return transformed_sample
     
     def text_to_tensors(self, node):
