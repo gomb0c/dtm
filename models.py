@@ -7,22 +7,21 @@ from nltk import TreePrettyPrinter, Tree
 
 from TPR_utils import BatchSymbols2NodeTree, DecodedTPR2Tree, build_D, build_E
 import torch.utils.checkpoint as checkpoint
-from vector_symbolic_utils import VectorSymbolicManipulator
+from vector_symbolic_utils import VectorSymbolicConverter, VectorSymbolicManipulator
 
 
 class DiffTreeMachine(nn.Module):
     def __init__(self, d_filler, d_role, d_model, role_emb, steps, dim_feedforward, nhead=4, dropout=.1,
                  transformer_activation='gelu', layer_norm_eps=1e-5, transformer_norm_first=True,
                  transformer_layers_per_step=1, op_dist_fn='softmax', arg_dist_fn='softmax', ind2vocab=None, 
-                 vector_symbolic_converter=None,predefined_operations_are_random=False):
+                 vector_symbolic_converter: VectorSymbolicConverter=None, vector_symbolic_manipulator: VectorSymbolicManipulator=None):
         super().__init__()
         d_tpr = d_filler * d_role
 
         self.ctrl_net = nn.Linear(d_tpr, d_model)
         self.num_ops=3
 
-        self.interpreter = DiffTreeInterpreter(role_emb, num_ops=self.num_ops,
-                                               predefined_operations_are_random=predefined_operations_are_random)
+        self.interpreter = DiffTreeInterpreter(vector_symbolic_manipulator)
 
         self.steps = steps
 

@@ -26,7 +26,7 @@ except BaseException as ex:
     pass
 
 from data import BinaryT2TDataset
-from TPR_utils import TPR, DecodedTPR2Tree
+from TPR_utils import TPRConverter, TPRManipulator, DecodedTPR2Tree
 from models import *
 from vector_symbolic_utils import VectorSymbolicConverter
 
@@ -69,7 +69,7 @@ parser.add_argument('--router_hidden_dim', type=int, default=None,
 parser.add_argument('--ctrl_hidden_dim', type=int, default=64,
                     help='Ctrl hidden dim')
 parser.add_argument('--ctrl_num_layers', type=int, default=1,)
-parser.add_argument('--predefined_operations_are_random', action='store_true',
+parser.add_argument('--predefined_ops_random', action='store_true',
                     help='Whether the car/cdr/cons matrices are calculated exactly or learnable random matrices')
 # training
 parser.add_argument('--epoch', type=int, default=None,
@@ -226,15 +226,17 @@ if d_filler is None:
 if args.use_vsas:
     raise NotImplementedError('VSA method not yet implemented!!')
 else:
-    vector_symbolic_converter = TPR(args, num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
+    vector_symbolic_converter = TPRConverter(args, num_fillers=len(train_data.ind2vocab), num_roles=2**max_depth-1,
             d_filler=d_filler, d_role=d_role).to(device=device)
+    vector_symbolic_manipulator = TPRManipulator(role_emb=vector_symbolic_converter.role_emb,
+                                                 num_ops=3, predefined_ops_random=args.predefined_ops_random)
 
 dtm = DiffTreeMachine(d_filler, d_role, args.ctrl_hidden_dim, args.role_emb, args.dtm_steps,
                       args.router_hidden_dim, nhead=args.transformer_nheads,
                       dropout=args.router_dropout, transformer_activation=args.transformer_activation,
                       transformer_norm_first=args.transformer_norm_first, op_dist_fn=args.op_dist_fn, arg_dist_fn=args.arg_dist_fn,
                       ind2vocab=train_data.ind2vocab, vector_symbolic_converter=vector_symbolic_converter,
-                      predefined_operations_are_random=args.predefined_operations_are_random).to(device=device)
+                      vector_symbolic_manipulator=vector_symbolic_manipulator).to(device=device)
 
 params = list(dtm.parameters())
 
@@ -297,8 +299,8 @@ for epoch_i in range(args.epoch):
         bsz = batch['input'].size(0)
         optimizer.zero_grad(set_to_none=True)
         # Use an agent
-        output, _, entropies = dtm(tpr(batch['input']))
-        decoded = tpr.unbind(output, decode=True)
+        output, _, entropies = dtm(vector_symbolic_converter.encode_tree_as_vector_symbolic(batch['input']))
+        decoded = vector_symbolic_converter.decode_vector_symbolic_to_tree(output, decode=True)
 
         fully_decoded = DecodedTPR2Tree(decoded)
 
@@ -382,7 +384,7 @@ for epoch_i in range(args.epoch):
                         
                     writer.add_text('Epoch {}'.format(epoch_i), '\n\n'.join(debug_text), global_step=step)
                     
-                decoded = tpr.unbind(output, decode=True)
+                decoded = vector_symbolic_converter.decode_vector_symbolic_to_tree(output, decode=True)
 
                 fully_decoded = DecodedTPR2Tree(decoded)
 
@@ -447,9 +449,9 @@ def calculate_accuracy(data_loader, data_name):
         total = 0
         for i, batch in enumerate(data_loader):
             bsz = batch['input'].size(0)
-            output, debug_info, _ = dtm(tpr(batch['input']))
+            output, debug_info, _ = dtm(vector_symbolic_converter.encode_tree_as_vector_symbolic(batch['input']))
 
-            fully_decoded = DecodedTPR2Tree(tpr.unbind(output, decode=True))
+            fully_decoded = DecodedTPR2Tree(vector_symbolic_converter.decode_vector_symbolic_to_tree(output, decode=True))
 
             correct += (fully_decoded == batch['output']).all(dim=-1).sum().item()
             total += batch['output'].size(0)
