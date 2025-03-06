@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from node import Node
+from representation import VectorSymbolicConverter
 
-class TPR(nn.Module):
-    def __init__(self, args, num_fillers, num_roles, d_filler=32, d_role=32) -> None:
+class TPRConverter(VectorSymbolicConverter):
+    def __init__(self, num_fillers, num_roles, d_filler=32, d_role=32) -> None:
         super().__init__()
         self.filler_emb = nn.Embedding(num_fillers, d_filler)
         self.role_emb = nn.Embedding(num_roles, d_role)
@@ -22,19 +23,22 @@ class TPR(nn.Module):
         self.filler_emb.weight.data[0, :] = 0
         nn.init.orthogonal_(self.role_emb.weight, gain=1)
 
-    def forward(self, tree_tensor):
+    def encode_tree_as_vector_symbolic(self, trees):
         '''
         Given a binary tree represented by a tensor, construct the TPR
         '''
-        x = self.filler_emb(tree_tensor)
+        x = self.filler_emb(trees)
         return torch.einsum('brm,rn->bmn', x, self.role_emb.weight)
     
-    def unbind(self, tpr_tensor, decode=False):
+    def decode_vector_symbolic_to_tree(self, tpr_tensor, quantise_fillers=False):
         '''
-        Given a TPR, unbind it
+        Given a TPR of dimension (B, D_{F}, D_{R}), unbind it into the underlying fillers
+        Produces output of shape (B, N_{R], D_{F}}) if quantise_fillers is False
+        Otherwise, produces output of shape (B, N_{R}, N_{F}) if quantise_fillers is True 
+            (bins filler vectors into the N_{F} possible filler bins)
         '''
         unbinded = torch.einsum('bmn,rn->brm', tpr_tensor, self.role_emb.weight)
-        if not decode:
+        if not quantise_fillers:
             return unbinded
         return torch.einsum('brm,fm->brf', unbinded, self.filler_emb.weight)
 

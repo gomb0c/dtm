@@ -16,7 +16,8 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
     def test_single_node_tree(self): 
         n_fillers = 2
         hypervec_dim = 7
-        filler_weights = torch.Tensor([[1, 2, 4, 8, 16, 32, 64],
+        filler_weights = torch.Tensor([[0, 0, 0, 0, 0, 0, 0],
+                                       [1, 2, 4, 8, 16, 32, 64],
                                        [2, 4, 8, 16, 32, 64, 128]])
         role_weights = torch.randn_like(filler_weights)
         tree = torch.Tensor([2]) # note there is an offset here since a value of 0 indicates empty
@@ -29,7 +30,8 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
     def test_single_node_tree_root_role(self): 
         n_fillers = 2
         hypervec_dim = 7
-        filler_weights = torch.Tensor([[1, 2, 4, 8, 16, 32, 64],
+        filler_weights = torch.Tensor([[0, 0, 0, 0, 0, 0, 0],
+                                       [1, 2, 4, 8, 16, 32, 64],
                                        [2, 4, 8, 16, 32, 64, 128]])
         role_weights = torch.randn(size=(2, hypervec_dim))
         role_weights = torch.concat([role_weights, 
@@ -47,7 +49,8 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
     def test_multinode_tree_balanced(self): 
         n_fillers = 3
         hypervec_dim = 4
-        filler_weights = torch.Tensor([[1, 1, 1, 1], 
+        filler_weights = torch.Tensor([[0, 0, 0, 0],
+                                       [1, 1, 1, 1], 
                                        [2, 3, 4, 5], 
                                        [1, 2, 3, 4]])
         role_weights = torch.Tensor([[1, 9, 8, 3],
@@ -61,13 +64,14 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         # expected result
         left_part = torch.Tensor([67, 52, 41, 50])
         right_part = torch.Tensor([30, 30, 30, 30])
-        expected_result = left_part + right_part + filler_weights[1]
+        expected_result = left_part + right_part + filler_weights[2]
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
     
     def test_multinode_tree_balanced_root_role(self): 
         n_fillers = 3
         hypervec_dim = 4
-        filler_weights = torch.Tensor([[1, 1, 1, 1], 
+        filler_weights = torch.Tensor([[0, 0, 0, 0], 
+                                       [1, 1, 1, 1], 
                                        [2, 3, 4, 5], 
                                        [1, 2, 3, 4]])
         role_weights = torch.Tensor([[1, 9, 8, 3],
@@ -90,6 +94,7 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         n_fillers = 5
         hypervec_dim = 3
         filler_weights = torch.Tensor([
+            [0, 0, 0],
             [1, 2, 3],
             [3, 4, 1],
             [2, 2, 1],
@@ -126,6 +131,7 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         n_fillers = 4
         hypervec_dim = 2
         filler_weights = torch.Tensor([
+            [0, 0],
             [1, 2], 
             [2, 8],
             [-3, 7],
@@ -136,7 +142,7 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
             [1/3, 4/5],
             [1, 9]
         ])
-        tree = torch.Tensor([2, 4, 1, 0, 1, 3, 0, 1, 0, 0, 0, 0])
+        tree = torch.Tensor([2, 4, 1, 0, 1, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0])
         #          2
         #    4           1
         #  0   1       3    0
@@ -145,7 +151,7 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
         # find rep of tree rooted at 3
         # [-3, 7] + l \ast [1, 2]
-        lr_tree = torch.Tensor([-3, 7]) + torch.Tensor([-1/2, 1/2])
+        rl_tree = torch.Tensor([-3, 7]) + torch.Tensor([-1/2, 1/2])
         
         # find rep of tree rooted at 4 
         # [0, 1] + r \ast [1, 2]
@@ -161,7 +167,10 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         # expected = root_rep + l \ast l_tree + r \ast r_tree
         l_part = torch.Tensor([-4/15, 4/15])
         r_part = torch.Tensor([9/2, -11/10])
-        expected_rep = root_rep + l_part + r_part
+        expected_result = root_rep + l_part + r_part
+
+        hrr_rep = vsa(tree.unsqueeze(0))
+        np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
     
 #class VSAUtilsTestBatchHRR(absltest.TestCase): 
 #    def test_single_elem_batch_no_empty_nodes(self): 

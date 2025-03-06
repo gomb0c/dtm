@@ -28,6 +28,7 @@ except BaseException as ex:
 from data import BinaryT2TDataset
 from TPR_utils import TPR, DecodedTPR2Tree
 from models import *
+from representation import VectorSymbolicConverter
 
 
 def calculate_loss(decoded):
@@ -93,7 +94,6 @@ self-inverse & approximately invertible: MAP-C
 self-inverse & exact invertible MAP-B, MAP-I, BSC
 Walsh Hadamard Derived VSA (2024 neurips paper )
 '''
-
 
 # optim
 parser.add_argument('--optim_beta1', type=float, default=0.9)

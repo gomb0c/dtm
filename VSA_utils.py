@@ -4,7 +4,11 @@ import torch.nn as nn
 import constants.vsa_types as VSATypes
 import constants.positions as Positions
 import hrr_ops as hrr_ops
+from representation import VectorSymbolicConverter
 
+'''
+To think about: maybe orthogonalise the hypervec space based on the number of actual fillers (not including empty filler?)
+'''
 class VSAOps(): 
     def __init__(self, vsa_type: VSATypes=VSATypes.HRR) -> None: 
         if vsa_type == VSATypes.HRR: 
@@ -16,7 +20,7 @@ class VSAOps():
             raise NotImplementedError(f"{vsa_type} does not yet have implemented operations")
 
     
-class VSA(nn.Module): 
+class VSA(VectorSymbolicConverter): 
     def __init__(self, n_fillers: int, dim: int, 
                  vsa_operator: VSAOps,
                  bind_root: bool=False,
@@ -62,9 +66,11 @@ class VSA(nn.Module):
                                                    dims=self.hypervec_dim,
                                                    strict_orth=self.strict_orth)
         self.role_dict.weight = nn.Parameter(hypervecs[:self.n_roles], requires_grad=False)
-        self.filler_dict.weight = nn.Parameter(hypervecs[self.n_roles, :], requires_grad=False)
+        self.filler_dict.weight = nn.Parameter(torch.concat((torch.zeros(size=(1, self.hypervec_dim), device=hypervecs.device), hypervecs[self.n_roles:]),
+                                                            dim=0), 
+                                               requires_grad=False) 
     
-    def forward(self, trees: torch.Tensor) -> torch.Tensor: 
+    def encode_tree_as_vector_symbolic(self, trees: torch.Tensor) -> torch.Tensor: 
         '''
         inputs: 
             trees (torch.Tensor) corresponds to a tensor of dimension (B, 2**max_depth-1),
@@ -89,9 +95,7 @@ class VSA(nn.Module):
                 continue 
             
             # filler vectors for valid batch entries at index j
-            f = self.filler_dict.weight[vocab_idxs[valid_mask].long() - 1] 
-            # note that we offset by 1 due to the fact that vocab_idx of 0 is used 
-            # by the authors of this repo to indicate that a position is empty
+            f = self.filler_dict.weight[vocab_idxs[valid_mask].long()] 
             #print(f'Shape of f is {f.shape}')
             
             vsa_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
@@ -128,6 +132,9 @@ class VSA(nn.Module):
             vsa_reps[:, j, :] = vsa_reps_j
         
         return vsa_reps[:, 0, :] # corresponds to vsa rep of root
+    
+    def decode_vector_symbolic_to_tree(self, vsa: torch.Tensor, quantise_fillers: bool=False) -> torch.Tensor: 
+        pass
                 
 class VSAConsNet(nn.Module): 
     def __init__(self, vsa_ops: VSAOps, left_role: torch.Tensor, right_role: torch.Tensor, 
