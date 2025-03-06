@@ -2,17 +2,17 @@ import torch
 import numpy as np
 from absl.testing import absltest 
 
-from VSA_utils import VSA, VSAOps
+from VSA_utils import VSAConverter, VSAOps
 import constants.vsa_types as VSATypes
 
 def get_vsa_instance(n_fillers: int, dim: int, vsa_type: VSATypes, bind_root: bool,
                  filler_weights: torch.Tensor = None, role_weights: torch.Tensor = None, 
-                 strict_orth: bool=False) -> VSA:
-    vsa = VSA(n_fillers, dim, VSAOps(vsa_type), bind_root, strict_orth)
-    vsa._set_hypervecs(filler_weights, role_weights)
-    return vsa
+                 strict_orth: bool=False) -> VSAConverter:
+    vsa_converter = VSAConverter(n_fillers, dim, VSAOps(vsa_type), bind_root, strict_orth)
+    vsa_converter._set_hypervecs(filler_weights, role_weights)
+    return vsa_converter
 
-class VSAUtilsTestTreeHRR(absltest.TestCase): 
+class VSAConverterConvertSTree(absltest.TestCase): 
     def test_single_node_tree(self): 
         n_fillers = 2
         hypervec_dim = 7
@@ -22,9 +22,9 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         role_weights = torch.randn_like(filler_weights)
         tree = torch.Tensor([2]) # note there is an offset here since a value of 0 indicates empty
         
-        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
-        hrr_rep = vsa(tree.unsqueeze(0)) 
+        hrr_rep = vsa_converter(tree.unsqueeze(0)) 
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), np.array([2, 4, 8, 16, 32, 64, 128]))
     
     def test_single_node_tree_root_role(self): 
@@ -39,9 +39,9 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         # root role has position 3 in the role_weights dict 
         # 
         tree = torch.Tensor([2])
-        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
-        hrr_rep = vsa(tree.unsqueeze(0)) 
+        hrr_rep = vsa_converter(tree.unsqueeze(0)) 
         # expected result is circ conv between filler_weights[1] and role_weights[positions.role_index]
         expected_result = (254/7)*torch.ones_like(filler_weights[0])
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
@@ -58,9 +58,9 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         tree = torch.Tensor([2, 3, 1])
         #       [2, 3, 4, 5]
         # [1, 2, 3, 4] [1, 1, 1, 1]
-        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
-        hrr_rep = vsa(tree.unsqueeze(0))
+        hrr_rep = vsa_converter(tree.unsqueeze(0))
         # expected result
         left_part = torch.Tensor([67, 52, 41, 50])
         right_part = torch.Tensor([30, 30, 30, 30])
@@ -80,9 +80,9 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         tree = torch.Tensor([2, 3, 1])
         #       [2, 3, 4, 5]
         # [1, 2, 3, 4] [1, 1, 1, 1]
-        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
-        hrr_rep = vsa(tree.unsqueeze(0))
+        hrr_rep = vsa_converter(tree.unsqueeze(0))
         # expected result
         left_part = torch.Tensor([67, 52, 41, 50])
         right_part = torch.Tensor([30, 30, 30, 30])
@@ -110,7 +110,7 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         #   3   5
         #  4
         # 2
-        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
         # get hrr rep of tree rooted at 4
         ll_tree = torch.Tensor([14, 21, 9]) + torch.Tensor([17/6, 13/4, 31/12])
@@ -123,7 +123,7 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         right_part = torch.Tensor([13/6, 3, -17/6]) 
         expected_result = torch.Tensor([1, 2, 3]) + left_part + right_part
         
-        hrr_rep = vsa(tree.unsqueeze(0))
+        hrr_rep = vsa_converter(tree.unsqueeze(0))
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
         
     
@@ -147,7 +147,7 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         #    4           1
         #  0   1       3    0
         # 0  0  0  0  1  0  0  0   
-        vsa = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
         # find rep of tree rooted at 3
         # [-3, 7] + l \ast [1, 2]
@@ -169,9 +169,11 @@ class VSAUtilsTestTreeHRR(absltest.TestCase):
         r_part = torch.Tensor([9/2, -11/10])
         expected_result = root_rep + l_part + r_part
 
-        hrr_rep = vsa(tree.unsqueeze(0))
+        hrr_rep = vsa_converter(tree.unsqueeze(0))
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
     
+class VSAConverterDecodeVSA(absltest.TestCase)
+
 #class VSAUtilsTestBatchHRR(absltest.TestCase): 
 #    def test_single_elem_batch_no_empty_nodes(self): 
 #        pass 

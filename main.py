@@ -451,7 +451,7 @@ def calculate_accuracy(data_loader, data_name):
             bsz = batch['input'].size(0)
             output, debug_info, _ = dtm(vector_symbolic_converter.encode_stree(batch['input']))
 
-            fully_decoded = DecodedTPR2Tree(vector_symbolic_converter.decode_vsymbolic(output, return_similiarities=True))
+            fully_decoded = DecodedTPR2Tree(vector_symbolic_converter.decode_vsymbolic(output, return_similarities=True))
 
             correct += (fully_decoded == batch['output']).all(dim=-1).sum().item()
             total += batch['output'].size(0)
