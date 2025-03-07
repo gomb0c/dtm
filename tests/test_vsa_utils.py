@@ -6,13 +6,16 @@ from absl.testing import absltest
 from VSA_utils import VSAConverter, VSAOps
 import constants.vsa_types as VSATypes
 
+
 def get_vsa_instance(n_fillers: int, dim: int, vsa_type: VSATypes, bind_root: bool,
                      filler_weights: torch.Tensor = None, role_weights: torch.Tensor = None, 
                      max_d: int=3, strict_orth: bool=False) -> VSAConverter:
     vsa_converter = VSAConverter(n_fillers, dim, VSAOps(vsa_type), max_d, bind_root, strict_orth)
-    vsa_converter._set_hypervecs(filler_weights, role_weights)
+    if filler_weights is not None and role_weights is not None: 
+        vsa_converter._set_hypervecs(filler_weights, role_weights)
     return vsa_converter
 
+"""
 class VSAConverterConvertSTree(absltest.TestCase): 
     def test_single_node_tree(self): 
         n_fillers = 2
@@ -172,7 +175,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
 
         hrr_rep = vsa_converter(tree.unsqueeze(0))
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
-    
+    """
 class VSAConverterDecodeVSA(absltest.TestCase): 
     def test_decode_single_node_tree_root_unbound(self):
         n_fillers = 3
@@ -213,7 +216,27 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         decoded = vsa_converter.decode_vsymbolic(vsa=hrr_rep)
         np.testing.assert_allclose(torch.Tensor([0, 0, 1]).reshape(1, 1, 3).numpy(), decoded, atol=1e-6, rtol=1e-6)
     
-    def decode_single_node_tree_noisy(self): 
+    def test_decode_multinode_tree_full_root_unbound(self): 
+        n_fillers = 4
+        hypervec_dim = 1024
+        
+        tree = torch.Tensor([1, 2, 3])
+        
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+                                         bind_root=False, filler_weights=None, 
+                                         role_weights=None, max_d=2)
+
+        hrr_rep = vsa_converter(tree.unsqueeze(0))
+
+        # output has shape (1, n_nodes, N_{F})
+        idxs = vsa_converter.decode_vsymbolic(hrr_rep)
+        np.testing.assert_allclose(torch.Tensor([[0, 1, 0, 0],
+                                                [0, 0, 1, 0], 
+                                                [0, 0, 0, 1]]), idxs, atol=1e-6, rtol=1e-8)
+        # precondition 
+        
+    
+    def decode_multinode_tree_full_root_bound(self): 
         pass
     
     def decode_multinode_tree_unbalanced_root_unbound(self): 

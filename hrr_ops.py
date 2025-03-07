@@ -48,6 +48,11 @@ def circular_conv(a, b):
     output = torch.fft.irfft(output, n=a.shape[-1], dim=-1)
     return output.real
 
+def circular_corr(a, b): 
+    left = torch.fft.fft(a) 
+    right = torch.conj(torch.fft.fft(b))
+    return torch.fft.ifft(left * right, dim=-1)
+
 def get_appx_inv(a):
     """
     Compute approximate inverse of vector a.
@@ -75,20 +80,17 @@ def complexMagProj(x):
     Assumes x real-valued tensor with last dimension as the signal domain
     """
     # 1. Forward real-to-complex FFT along the last dimension
-    c = torch.fft.rfft(x, dim=-1) 
+    c = torch.fft.fft(x, n=x.shape[-1], dim=-1) 
     
     # 2. Normalize magnitudes
-    # c.norm(dim=-1) returns sqrt(Re^2 + Im^2) for each frequency bin.
-    c_mag = c.norm(dim=-1, keepdim=True)  # shape (..., 1)
+    c_norm = c / (torch.abs(c) + 1e-12)
     
-    # Avoid division by zero if needed (optional small-epsilon check)
-    c_mag = torch.clamp(c_mag, min=1e-12)
-    
-    c_norm = c / c_mag
+    # Ensure that each element has unit magnitude \sqrt(Re^{2} + Im^{2}) \approx 1
+    # np.testing.assert_array_almost_equal(torch.abs(c_norm), np.ones_like(c_norm))
     
     # 3. Inverse complex-to-real FFT, specifying the original signal length
     n = x.shape[-1]
-    output = torch.fft.irfft(c_norm, n=n, dim=-1)
+    output = torch.fft.ifft(c_norm, n=n, dim=-1).real
     
     return output
 
@@ -121,4 +123,5 @@ def generate_seed_vecs(n_vecs: int, dims: int, strict_orth: bool=False) -> torch
     else: 
         randn_vecs = torch.randn(n_vecs, dims) / math.sqrt(dims)
         return complexMagProj(randn_vecs)
+        
         

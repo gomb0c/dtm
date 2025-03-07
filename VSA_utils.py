@@ -49,10 +49,11 @@ class VSAConverter(VectorSymbolicConverter):
         self.role_emb.weight.requires_grad = False 
         
         self.init_hypervecs()
-        self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX], requires_grad=False)
-        self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX], requires_grad=False)
-        self.root_role = nn.Parameter(self.role_emb.weight[Positions.ROOT_INDEX], requires_grad=False) if self.bind_root else None
-    
+        self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
+        self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
+        self.root_role = nn.Parameter(self.role_emb.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
+        self.set_inv_roles()
+        
     def _set_hypervecs(self, filler_weights: torch.Tensor=None, role_weights: torch.Tensor=None) -> None:
         ''' For testing purposes '''
         if filler_weights is not None: 
@@ -62,15 +63,21 @@ class VSAConverter(VectorSymbolicConverter):
             self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
             self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
             self.root_role = nn.Parameter(self.role_emb.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
+        self.set_inv_roles()
+        
+    def set_inv_roles(self): 
+        self.inv_left_role = self.vsa_operator.inverse_op(self.left_role)
+        self.inv_right_role = self.vsa_operator.inverse_op(self.right_role)
+        if self.bind_root: 
+            self.inv_root = self.vsa_operator.inverse_op(self.root_role)
     
     def init_hypervecs(self) -> None:
         hypervecs = self.vsa_operator.generator(n_vecs=self.n_hypervecs,
                                                    dims=self.hypervec_dim,
                                                    strict_orth=self.strict_orth)
         self.role_emb.weight = nn.Parameter(hypervecs[:self.n_roles], requires_grad=False)
-        self.filler_emb.weight = nn.Parameter(torch.concat((torch.zeros(size=(1, self.hypervec_dim), device=hypervecs.device), hypervecs[self.n_roles:]),
-                                                            dim=0), 
-                                               requires_grad=False) 
+        self.filler_emb.weight = nn.Parameter(hypervecs[self.n_roles:], requires_grad=False) 
+        self.filler_emb.weight[0] = 0 
     
     def encode_stree(self, trees: torch.Tensor) -> torch.Tensor: 
         '''
@@ -116,6 +123,8 @@ class VSAConverter(VectorSymbolicConverter):
                 if torch.any(left_child_mask): 
                     # convolve in batch -> (n_valid_children, hypervec_dim)
                     left_child_vecs = vsa_reps[left_child_mask, left_idx, :]
+                    #print(f'Left child vecs is {left_child_vecs}, shape {left_child_vecs.shape}')
+                    #print(f'left child is {self.left_role.shape}')
                     conv_left = self.vsa_operator.bind_op(self.left_role, left_child_vecs)
                     #print(f'Hrr reps before is {vsa_reps_j[left_child_mask]}')
                     vsa_reps_j[left_child_mask] += conv_left 
@@ -135,26 +144,35 @@ class VSAConverter(VectorSymbolicConverter):
         
         return vsa_reps[:, 0, :] # corresponds to vsa rep of root
     
-    def _decode_level(self, level_vsas: torch.Tensor, eps: float) -> torch.Tensor: 
-        ''' 
-        Given a vsa representation of a tree, extracts cosine similarity between values 'bound' to a node
-        and the filler embeddings 
+    
+    def _decode_vsymbolic(self, vsa: torch.Tensor, d: int, eps: float=1e-10) -> torch.Tensor: 
+        if d == 0 and self.bind_root: 
+            vsa = self.vsa_operator.unbind_op(vsa, self.inv_root)
         
-        Inputs: 
-            vsa (torch.Tensor) of dimension (B, 2**curr_depth - 1, D)
-        '''
-        print(f'Level vsas has shape {level_vsas.shape}')
-        norm = torch.norm(level_vsas, dim=-1, keepdim=True)                               # (B, 2**curr_depth - 1, 1)
-        print(f'norm is {norm} with shape {norm.shape}')
-        # (b_sz, n_nodes, N_{F}, D)
-        # (b_sz, n_nodes, -1, d)
-        sim = torch.cosine_similarity(self.filler_emb.weight[None, None, :, :],
-                                      level_vsas.unsqueeze(-2), dim=-1) # (1, 1, N_{F}, D), (B, 2**curr_depth - 1, 1, D) ->  (B, 2**curr_depth - 1, N_{F})          
-        print(f'Shape of sim is {sim.shape}')
-        print(f'Size of input vsa {level_vsas.unsqueeze(-2).shape}, size of filler emb {self.filler_emb.weight[None, None, :, :].shape}')
-        sim = torch.where((norm < eps).expand(-1, -1, self.n_fillers), torch.zeros_like(sim), sim)
-        print(f'Sim is {sim}')
-        return sim
+        # get current node 
+        norm = torch.norm(vsa, keepdim=True) # (B, 1)
+        sim_mat = torch.cosine_similarity(vsa.unsqueeze(1), self.filler_emb.weight.unsqueeze(0),
+                                          dim=-1) # (B, D), (N_{F}, D) -> (B, N_{F})
+        sim = torch.where(norm >= eps, sim_mat, torch.zeros_like(sim_mat)).unsqueeze(1) # (B, 1, N_{F})
+        print(f'Depth is {d}, sim is {sim} with shape {sim.shape}')
+        sims_list = [sim]
+        
+        if d >= self.max_d - 1:
+            return sims_list 
+        
+        left_subtree =  self.vsa_operator.unbind_op(vsa, self.inv_left_role)
+        right_subtree = self.vsa_operator.unbind_op(vsa, self.inv_right_role)
+        
+        print(f'UNBINDING LEFT...\nWith left inverse role {self.inv_left_role}\nLeft subtree {left_subtree}')
+        left_st_sims = self._decode_vsymbolic(left_subtree, d+1, eps)
+        print(f'LEFT UNBOUND, result {left_st_sims}\n')
+        print(f'UNBINDING RIGHT...\nWith right inverse role {self.inv_right_role}\nRight subtree {right_subtree}')
+        right_st_sims = self._decode_vsymbolic(right_subtree, d+1, eps)
+        print(f'RIGHT UNBOUND, result {right_st_sims}\n')
+        
+        print(f'Sims list is {sims_list}, left is {left_st_sims}, right is {right_st_sims}\n')
+        
+        return sims_list + left_st_sims + right_st_sims
     
     def decode_vsymbolic(self, vsa: torch.Tensor, return_distances: bool=True,
                                        eps: float=1e-10) -> torch.Tensor: 
@@ -176,36 +194,9 @@ class VSAConverter(VectorSymbolicConverter):
         
         if not return_distances:
             raise ValueError(f'For VSAs, we cannot directly extract out the filler embedding!')
+        return torch.cat(self._decode_vsymbolic(vsa, d=0, eps=eps), dim=1)
         
-        b_sz = vsa.shape[0]
-        level_sims = []
-        inv_left_child = self.vsa_operator.inverse_op(self.left_role)
-        inv_right_child = self.vsa_operator.inverse_op(self.right_role)
-        
-        # if root filler is bound to the special root role, we first perform unbinding of this
-        if self.bind_root: 
-            inv_root_role = self.vsa_operator.inverse_op(self.root_role)
-            vsa = self.vsa_operator.unbind_op(vsa, inv_root_role)
-        
-        level_sims.append(self._decode_level(vsa.unsqueeze(1), eps)) # (b_sz, 1, N_{F})
-        
-        for d in range(1, self.max_d - 1): 
-            # unbind left subtree
-            left_st = self.vsa_operator.unbind_op(vsa, inv_left_child)
-            # unbind right subtree
-            right_st = self.vsa_operator.unbind_op(vsa, inv_right_child)
-            # concatenate to get all nodes at this level 
-            next_level = torch.cat([left_st, right_st], dim=0)
-            # decode
-            sims_level_d = self._decode_level(next_level, eps)
-            # reshape to effectively perform BFS traversal
-            sims_level_d = sims_level_d.view(b_sz, 2**d, self.n_fillers)
-            level_sims.append(sims_level_d) 
-            vsa = next_level
-            
-        # concatenate similarity tensor along node dim 
-        final = torch.cat(level_sims, dim=1) # (b_sz, 2**depth-1, N_{F})
-        return final 
+      
             
         
 class VSAManipulator(VectorSymbolicManipulator): 
