@@ -105,8 +105,8 @@ class TestHRROps(absltest.TestCase):
         np.testing.assert_allclose(a_star, a_dagger, atol=1e-8, rtol=1e-6)
     
     def test_recoverability(self): 
-        n_fillers = 250
-        n_roles = 32
+        n_fillers = 100
+        n_roles = 64
         D = 1024
         fillers = generate_seed_vecs(n_vecs=n_fillers, dims=D) 
         bound_filler_idxs = torch.randint(low=0, high=n_fillers-1, 
@@ -129,8 +129,6 @@ class TestHRROps(absltest.TestCase):
         
         sims = torch.cosine_similarity(unbound2.unsqueeze(1), fillers.unsqueeze(0), dim=-1) # (N_{R}, 1, D), (1, N_{F}, D) -> (N_{R}, N_{F})
         idxs = torch.argmax(sims, dim=1)
-        #sims_at_relevant_idxs = sims[bound_filler_idxs]
-        #print(f'Sims are {sims_at_relevant_idxs.numpy()[0:10]}')
         
         np.testing.assert_equal((bound_filler_idxs == idxs).sum() > n_roles*0.9, torch.Tensor([True]))
     
