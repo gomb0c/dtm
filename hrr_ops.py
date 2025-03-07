@@ -42,16 +42,26 @@ def circular_conv(a, b):
     b: tensor of shape (batch, D)
     Assumes a and b are real-valued tensors
     """
-    left = torch.fft.rfft(a, dim=1)
-    right = torch.fft.rfft(b, dim=1)
+    left = torch.fft.fft(a, dim=1)
+    right = torch.fft.fft(b, dim=1)
     output = left * right # complex multiply in frequency domain
-    output = torch.fft.irfft(output, n=a.shape[-1], dim=-1)
+    output = torch.fft.ifft(output, n=a.shape[-1], dim=-1)
     return output.real
 
 def circular_corr(a, b): 
-    left = torch.fft.fft(a) 
-    right = torch.conj(torch.fft.fft(b))
-    return torch.fft.ifft(left * right, dim=-1)
+      # Compute the FFT of both inputs along the last dimension.
+    A = torch.fft.rfft(a, n=a.size(1))
+    B = torch.fft.rfft(b, n=b.size(1))
+    
+    # Multiply A by the complex conjugate of B.
+    prod = A * torch.conj(B)
+    
+    # Compute the inverse FFT to obtain the circular correlation in the time domain.
+    y = torch.fft.irfft(prod, n=a.size(1))
+    D = a.size(1)
+    idxs = (-torch.arange(D)) % D
+    return y[...,idxs] # cyclic shift
+
 
 def get_appx_inv(a):
     """
