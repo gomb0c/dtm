@@ -11,7 +11,7 @@ import math
 import numpy as np
 import torch
 from absl.testing import absltest 
-from hrr_ops import complexMagProj, circular_conv, circular_corr
+from hrr_ops import complexMagProj, circular_conv, circular_corr, get_inv, get_appx_inv
 
 class TestHRROps(absltest.TestCase): 
     def test_complex_mag_proj(self): 
@@ -85,18 +85,25 @@ class TestHRROps(absltest.TestCase):
         np.testing.assert_allclose(hat_c, c, atol=1e-8, rtol=1e-6)
     
     def test_get_pseudo_inv_non_unitary(self): 
-        a = torch.Tensor([])
+        a = torch.Tensor([1, 2, 3, 4]).unsqueeze(0)
+        expected_a_star = torch.Tensor([1, 4, 3, 2]).unsqueeze(0)
+        np.testing.assert_allclose(get_appx_inv(a), expected_a_star, atol=1e-8, rtol=1e-6)
     
     def test_get_inv_non_unitary(self): 
-        pass 
-    
+        a = torch.Tensor([1, 2, 3, 4]).unsqueeze(0)
+        expected_a_dagger = (1/40)*torch.Tensor([-9, 11, 1, 1]).unsqueeze(0)
+        np.testing.assert_allclose(get_inv(a), expected_a_dagger, atol=1e-8, rtol=1e-6)
+     
     def test_get_inv_unitary(self): 
-        # test inverse has correct complex magnitude
-        # test equivalent to pseudo-inverse
-        pass 
+        unitary_a = torch.Tensor([0.2427521, 0.4287465, 0.7572479, -0.4287465])
+        a_star = get_appx_inv(unitary_a)
+        a_dagger = get_inv(unitary_a)
+        expected_inv = torch.Tensor([0.2427521,-0.4287465,0.7572479,0.4287465])
+        np.testing.assert_allclose(a_star, expected_inv)
+        np.testing.assert_allclose(a_star, a_dagger, atol=1e-8, rtol=1e-6)
     
     def test_recoverability(self): 
-        pass 
+         
     
     
     
