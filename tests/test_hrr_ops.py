@@ -11,7 +11,7 @@ import math
 import numpy as np
 import torch
 from absl.testing import absltest 
-from hrr_ops import complexMagProj, circular_conv, circular_corr, get_inv, get_appx_inv
+from hrr_ops import complexMagProj, circular_conv, circular_corr, get_inv, get_appx_inv, generate_seed_vecs
 
 class TestHRROps(absltest.TestCase): 
     def test_complex_mag_proj(self): 
@@ -103,7 +103,32 @@ class TestHRROps(absltest.TestCase):
         np.testing.assert_allclose(a_star, a_dagger, atol=1e-8, rtol=1e-6)
     
     def test_recoverability(self): 
-         
+        n_fillers = 25
+        n_roles = 100
+        D = 4000
+        fillers = generate_seed_vecs(n_vecs=n_fillers, dims=D) 
+        bound_filler_idxs = torch.randint(low=0, high=n_fillers-1, 
+                                          size=(n_roles,))
+        roles = generate_seed_vecs(n_vecs=n_roles, dims=D)
+        bound_fillers = fillers[bound_filler_idxs]
+        
+        # bind fillers to roles using circ conv, then sum up, to retrieve VSA-based repn
+        s = torch.sum(circular_conv(bound_fillers, roles), dim=0, keepdim=True) # (1, D)
+
+        # now test that we can properly recover the bound fillers
+        # let's get the similarity matrix based on cosine similarity
+        
+        # unbind role from s
+        unbound = circular_corr(roles, s.expand(roles.shape[0], -1)) # (N_{roles}, D)
+        inv_roles = get_appx_inv(roles)
+        unbound2 = circular_conv(s, inv_roles)
+        
+        np.testing.assert_allclose(unbound, unbound2, atol=1e-4, rtol=1e-6)
+        
+        sims = torch.cosine_similarity(unbound2.unsqueeze(1), fillers.unsqueeze(0), dim=-1) # (N_{R}, 1, D), (1, N_{F}, D) -> (N_{R}, N_{F})
+        idxs = torch.argmax(sims, dim=1)
+        
+        np.testing.assert_array_equal(bound_filler_idxs, idxs)
     
     
     
