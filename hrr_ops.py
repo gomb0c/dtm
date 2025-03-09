@@ -10,6 +10,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import sys 
+np.set_printoptions(threshold=sys.maxsize)
 
 """
 Pytorch functions.
@@ -84,25 +86,26 @@ def get_inv(a: torch.DoubleTensor, eps: float=1e-8):
     a_inv = torch.fft.ifft(A_inv, dim=-1)
     return a_inv.real
 
+
 def complexMagProj(x):
     """
     Normalize a vector x in complex domain.
     Assumes x real-valued tensor with last dimension as the signal domain
     """
     # 1. Forward real-to-complex FFT along the last dimension
-    c = torch.fft.fft(x, n=x.shape[-1], dim=-1) 
+    X_fft = torch.fft.rfft(x, dim=-1) 
     
     # 2. Normalize magnitudes
-    c_norm = c / (torch.abs(c) + 1e-12)
+    X_fft_unit = X_fft / (X_fft.abs() + 1e-12)
     
     # Ensure that each element has unit magnitude \sqrt(Re^{2} + Im^{2}) \approx 1
     # np.testing.assert_array_almost_equal(torch.abs(c_norm), np.ones_like(c_norm))
     
     # 3. Inverse complex-to-real FFT, specifying the original signal length
     n = x.shape[-1]
-    output = torch.fft.ifft(c_norm, n=n, dim=-1).real
+    x_unitary = torch.fft.irfft(X_fft_unit, n=n, dim=-1)
     
-    return output
+    return x_unitary
 
 def normalize(x):
     return x/torch.norm(x)
@@ -118,7 +121,7 @@ def _generate_vectors(num_vectors, dims):
     vecs = torch.randn(dims, num_vectors, dtype=torch.float)
 
     # Using QR decomposition to get orthogonal vectors.
-    vecs, _ = torch.qr(vecs)
+    vecs, _ = torch.linalg.qr(vecs)
     vecs = vecs.t()
     vecs = vecs / torch.norm(vecs, dim=-1, keepdim=True)
     return vecs
@@ -129,9 +132,13 @@ Procedure as outlined in https://arxiv.org/pdf/2109.02157, code from authors
 def generate_seed_vecs(n_vecs: int, dims: int, strict_orth: bool=False) -> torch.Tensor: 
     if strict_orth: 
         orth_randn_vecs = _generate_vectors(n_vecs, dims)
+        #print(f'Orth randn vecs is {orth_randn_vecs.numpy()}')
+        #print(f'After complex magnitude projecting, they are {complexMagProj(orth_randn_vecs).numpy()}')
         return complexMagProj(orth_randn_vecs)
     else: 
         randn_vecs = torch.randn(n_vecs, dims) / math.sqrt(dims)
+        #print(f'Randn vecs is {randn_vecs.numpy()}')
+        #print(f'After complex magnitude projecting, they are {complexMagProj(randn_vecs).numpy()}')
         return complexMagProj(randn_vecs)
         
         

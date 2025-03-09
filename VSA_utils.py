@@ -1,3 +1,4 @@
+from collections import deque
 import torch 
 import torch.nn as nn
 
@@ -72,6 +73,7 @@ class VSAConverter(VectorSymbolicConverter):
             self.inv_root = self.vsa_operator.inverse_op(self.root_role)
     
     def init_hypervecs(self) -> None:
+        print(f'INITIALISING HYPERVECS')
         hypervecs = self.vsa_operator.generator(n_vecs=self.n_hypervecs,
                                                    dims=self.hypervec_dim,
                                                    strict_orth=self.strict_orth)
@@ -96,6 +98,7 @@ class VSAConverter(VectorSymbolicConverter):
             # get vocab indices for j-th node across match
             # shape (B, ) (0 => no node)
             vocab_idxs = trees[:, j]
+            #print(f'Vocab idxs is {vocab_idxs}')
             
             # make mask of non-empty nodes
             valid_mask = (vocab_idxs > 0)
@@ -109,12 +112,14 @@ class VSAConverter(VectorSymbolicConverter):
             
             vsa_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
             vsa_reps_j[valid_mask] = f 
+            #print(f'At j, vocab_reps_j is {vsa_reps_j[valid_mask]}')
             #print(f'Filler is {f}\nhrr reps is {vsa_reps}\nvalid mask is {valid_mask}')
             
             # bind the root with a root role if applicable
             if j == 0 and self.bind_root: 
                 vsa_reps_j[valid_mask] = self.vsa_operator.bind_op(self.root_role, f)
-                #print(f'J == 0 and circular conv is {vsa_reps_j[valid_mask]}\nRoot role is {self.root_role}, f is {f}')
+                #print(f'J is {j}, result of binding {f} to root is {vsa_reps_j[valid_mask]}')
+                #print(f'After, vssa_reps_j is {vsa_reps_j[valid_mask]}')
             
             # left child 
             left_idx = 2*j + 1
@@ -123,13 +128,11 @@ class VSAConverter(VectorSymbolicConverter):
                 if torch.any(left_child_mask): 
                     # convolve in batch -> (n_valid_children, hypervec_dim)
                     left_child_vecs = vsa_reps[left_child_mask, left_idx, :]
-                    #print(f'Left child vecs is {left_child_vecs}, shape {left_child_vecs.shape}')
-                    #print(f'left child is {self.left_role.shape}')
                     conv_left = self.vsa_operator.bind_op(self.left_role, left_child_vecs)
-                    #print(f'Hrr reps before is {vsa_reps_j[left_child_mask]}')
+                    #print(f'For j index {j}: Conv left between left_child_vecs at idx {left_idx} is {left_child_vecs} {conv_left}\n')
                     vsa_reps_j[left_child_mask] += conv_left 
-                    #print(f'Left child is {left_child_vecs}\nconv result is {conv_left}\nleft role is {self.left_role}')
-                    #print(f'Hrr reps after is {vsa_reps_j[left_child_mask]}\n')
+                    #print(f'J is {j}, result of binding {f} to left is {vsa_reps_j[valid_mask]}')
+                    #print(f'After, vsa_reps_j is {vsa_reps_j[valid_mask]}')
             # right child
             right_idx = 2*j + 2
             if right_idx < max_nodes: 
@@ -138,13 +141,52 @@ class VSAConverter(VectorSymbolicConverter):
                     right_child_vecs = vsa_reps[right_child_mask, right_idx, :]
                     conv_right = self.vsa_operator.bind_op(self.right_role, right_child_vecs)
                     vsa_reps_j[right_child_mask] += conv_right
-                    #print(f'Right child is {right_child_vecs}, j is {vsa_reps_j[right_child_mask]}, right role is {self.right_role}')
-            
+                    #print(f'For j index {j}: Conv right between right vecs at idx {right_idx} is {right_child_vecs} {conv_right}\n')
+                    #print(f'After, vsa_reps_j is {vsa_reps_j[valid_mask]}')
             vsa_reps[:, j, :] = vsa_reps_j
+            #print(f'At iter {j}, we have {vsa_reps[:, j, :]}\n')
         
         return vsa_reps[:, 0, :] # corresponds to vsa rep of root
     
     
+    def _decode_vsymbolic_level_order(self, vsa: torch.Tensor, eps: float=1e-10) -> torch.Tensor: 
+        queue = deque()
+        sims_list = []
+        
+        if self.bind_root: 
+            vsa = self.vsa_operator.unbind_op(vsa, self.inv_root)
+        queue.append((vsa, 0))
+        
+
+        i = 0
+        while queue: 
+            current_vsa, d = queue.popleft()
+            print(f'Current vsa is {current_vsa}')
+            # process curr node 
+            norm = torch.norm(current_vsa, keepdim=True)
+            sim_mat = torch.cosine_similarity(
+                current_vsa.unsqueeze(1), self.filler_emb.weight.unsqueeze(0), dim=-1
+            ) # (B, 1, D), (1, N_{F}, D) -> (B, N_{F})
+
+            sim_mat = torch.where(norm >= eps, sim_mat, torch.zeros_like(sim_mat)).unsqueeze(1) # (B, 1, N_{F})
+            sims_list.append(sim_mat)
+           
+        
+            if d < self.max_d - 1:
+                # enqueue left and right 
+                print(f'UNBINDING LEFT...')
+                left_subtree = self.vsa_operator.unbind_op(current_vsa, self.inv_left_role)
+                print(f'FINISHED LEFT, which is {left_subtree}... UNBINDING RIGHT...')
+                right_subtree = self.vsa_operator.unbind_op(current_vsa, self.inv_right_role)
+                
+                queue.append((left_subtree, d+1))
+                queue.append((right_subtree, d+1))
+                print(f'Queue is {queue}')
+        
+        print(f'Sims list is {sims_list}')
+        return torch.cat(sims_list, dim=1) # (B, 2**self.max_d-1, N_{F})
+    
+    """
     def _decode_vsymbolic(self, vsa: torch.Tensor, d: int, eps: float=1e-10) -> torch.Tensor: 
         if d == 0 and self.bind_root: 
             vsa = self.vsa_operator.unbind_op(vsa, self.inv_root)
@@ -163,17 +205,17 @@ class VSAConverter(VectorSymbolicConverter):
         left_subtree =  self.vsa_operator.unbind_op(vsa, self.inv_left_role)
         right_subtree = self.vsa_operator.unbind_op(vsa, self.inv_right_role)
         
-        print(f'UNBINDING LEFT...\nWith left inverse role {self.inv_left_role}\nLeft subtree {left_subtree}')
+        print(f'UNBINDING LEFT depth {d}...\nWith left inverse role {self.inv_left_role}\nLeft subtree {left_subtree}')
         left_st_sims = self._decode_vsymbolic(left_subtree, d+1, eps)
-        print(f'LEFT UNBOUND, result {left_st_sims}\n')
-        print(f'UNBINDING RIGHT...\nWith right inverse role {self.inv_right_role}\nRight subtree {right_subtree}')
+        print(f'LEFT UNBOUND depth {d}, result {left_st_sims}\n')
+        print(f'UNBINDING RIGHT depth {d}...\nWith right inverse role {self.inv_right_role}\nRight subtree {right_subtree}')
         right_st_sims = self._decode_vsymbolic(right_subtree, d+1, eps)
-        print(f'RIGHT UNBOUND, result {right_st_sims}\n')
+        print(f'RIGHT UNBOUND depth {d}, result {right_st_sims}\n')
         
         print(f'Sims list is {sims_list}, left is {left_st_sims}, right is {right_st_sims}\n')
         
         return sims_list + left_st_sims + right_st_sims
-    
+    """
     def decode_vsymbolic(self, vsa: torch.Tensor, return_distances: bool=True,
                                        eps: float=1e-10) -> torch.Tensor: 
         ''''
@@ -194,7 +236,7 @@ class VSAConverter(VectorSymbolicConverter):
         
         if not return_distances:
             raise ValueError(f'For VSAs, we cannot directly extract out the filler embedding!')
-        return torch.cat(self._decode_vsymbolic(vsa, d=0, eps=eps), dim=1)
+        return self._decode_vsymbolic_level_order(vsa, eps=eps)
         
       
             

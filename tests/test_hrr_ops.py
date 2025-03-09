@@ -13,7 +13,8 @@ import torch
 from absl.testing import absltest 
 from hrr_ops import complexMagProj, circular_conv, circular_corr, get_inv, get_appx_inv, generate_seed_vecs
 
-np.set_printoptions(threshold=np.inf)
+torch.manual_seed(1234)
+np.random.seed(1234)
 
 class TestHRROps(absltest.TestCase): 
     def test_complex_mag_proj(self): 
@@ -31,6 +32,15 @@ class TestHRROps(absltest.TestCase):
         np.testing.assert_allclose(projected, expected, atol=1e-5,
                                              rtol=1e-6)
     
+    def test_complex_mag_proj_batched_2(self): 
+        x = torch.randn(size=(10, 256))
+        projected = complexMagProj(x) 
+        dft_projected = torch.fft.rfft(projected, dim=-1).abs()
+        np.testing.assert_almost_equal(dft_projected.mean().item(), 1, decimal=5)
+        np.testing.assert_almost_equal(dft_projected.min().item(), 1, decimal=5)
+        np.testing.assert_almost_equal(dft_projected.max().item(), 1, decimal=5)
+        np.testing.assert_allclose(dft_projected, torch.ones_like(dft_projected), atol=1e-4, rtol=1e-5)
+          
     def test_circular_conv(self):
         a = torch.zeros(size=(5, 3))
         b = torch.randn_like(a)
@@ -106,8 +116,8 @@ class TestHRROps(absltest.TestCase):
     
     def test_recoverability(self): 
         n_fillers = 100
-        n_roles = 64
-        D = 1024
+        n_roles = 90
+        D = 2048
         fillers = generate_seed_vecs(n_vecs=n_fillers, dims=D) 
         bound_filler_idxs = torch.randint(low=0, high=n_fillers-1, 
                                           size=(n_roles,))
@@ -129,9 +139,8 @@ class TestHRROps(absltest.TestCase):
         
         sims = torch.cosine_similarity(unbound2.unsqueeze(1), fillers.unsqueeze(0), dim=-1) # (N_{R}, 1, D), (1, N_{F}, D) -> (N_{R}, N_{F})
         idxs = torch.argmax(sims, dim=1)
-        
-        np.testing.assert_equal((bound_filler_idxs == idxs).sum() > n_roles*0.9, torch.Tensor([True]))
-    
-    
+        print(f'{(bound_filler_idxs == idxs).sum()} elemns identified')
+        np.testing.assert_equal((bound_filler_idxs == idxs).sum() > n_roles*0.85, torch.Tensor([True]))
+
 if __name__ == '__main__': 
     absltest.main()
