@@ -19,11 +19,11 @@ def get_vsa_instance(n_fillers: int, dim: int, vsa_type: VSATypes, bind_root: bo
         vsa_converter._set_hypervecs(filler_weights, role_weights)
     return vsa_converter
 
-"""
+
 class VSAConverterInitialise(absltest.TestCase):
     def test_init_seed_vectors(self): 
         vsa_instance = get_vsa_instance(n_fillers=1000, dim=1024, 
-                                        vsa_type=VSATypes.HRR, bind_root=False, 
+                                        vsa_type=VSATypes.HRR_STANDARD, bind_root=False, 
                                         filler_weights=None, role_weights=None, 
                                         max_d=3, strict_orth=False)
         filler_embs = vsa_instance.filler_emb.weight 
@@ -36,7 +36,6 @@ class VSAConverterInitialise(absltest.TestCase):
         np.testing.assert_almost_equal(dft_projected.max().item(), 1, decimal=5)
         np.testing.assert_allclose(dft_projected, torch.ones_like(dft_projected), atol=1e-4, rtol=1e-5)
 
-
 class VSAConverterConvertSTree(absltest.TestCase): 
     def test_single_node_tree(self): 
         n_fillers = 2
@@ -47,7 +46,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
         role_weights = torch.randn_like(filler_weights)
         tree = torch.Tensor([2])
         
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
         hrr_rep = vsa_converter(tree.unsqueeze(0)) 
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), np.array([2, 4, 8, 16, 32, 64, 128]))
@@ -64,7 +63,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
         # root role has position 3 in the role_weights dict 
         # 
         tree = torch.Tensor([2])
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
         hrr_rep = vsa_converter.encode_stree(tree.unsqueeze(0)) 
         # expected result is circ conv between filler_weights[1] and role_weights[positions.role_index]
@@ -83,7 +82,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
         tree = torch.Tensor([2, 3, 1])
         #       [2, 3, 4, 5]
         # [1, 2, 3, 4] [1, 1, 1, 1]
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
         hrr_rep = vsa_converter.encode_stree(tree.unsqueeze(0))
         # expected result
@@ -105,7 +104,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
         #       [2, 3, 4, 5]
         # [1, 2, 3, 4] [1, 1, 1, 1]
         # [ 1 1]        [ 2 3]
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
         hrr_rep = vsa_converter.encode_stree(tree.unsqueeze(0))
         # expected result
@@ -132,7 +131,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
         tree = torch.Tensor([2, 3, 1])
         #       [2, 3, 4, 5]
         # [1, 2, 3, 4] [1, 1, 1, 1]
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
         hrr_rep = vsa_converter(tree.unsqueeze(0))
         # expected result
@@ -162,7 +161,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
         #   3   5
         #  4
         # 2
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
         # get hrr rep of tree rooted at 4
         ll_tree = torch.Tensor([14, 21, 9]) + torch.Tensor([17/6, 13/4, 31/12])
@@ -199,7 +198,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
         #    4           1
         #  0   1       3    0
         # 0  0  0  0  1  0  0  0   
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
         # find rep of tree rooted at 3
         # [-3, 7] + l \ast [1, 2]
@@ -223,7 +222,7 @@ class VSAConverterConvertSTree(absltest.TestCase):
 
         hrr_rep = vsa_converter(tree.unsqueeze(0))
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
-    """
+
 class VSAConverterDecodeVSA(absltest.TestCase): 
     """
     def test_decode_single_node_tree_root_unbound(self):
@@ -235,7 +234,7 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         role_weights = torch.randn_like(filler_weights)
         tree = torch.Tensor([2]) 
         
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=False, filler_weights=filler_weights, role_weights=role_weights, 
                                max_d=1)
         hrr_rep = vsa_converter(tree.unsqueeze(0)) 
@@ -256,7 +255,7 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         role_weights = torch.cat([role_weights[:-1], torch.Tensor([-1/2, 1/4, 1/5]).unsqueeze(0)], dim=0)
         tree = torch.Tensor([2]) 
         
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                bind_root=True, filler_weights=filler_weights, role_weights=role_weights,
                                max_d=1)
         hrr_rep = vsa_converter(tree.unsqueeze(0)) 
@@ -272,7 +271,7 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         d = 2
         tree = torch.Tensor([1, 2, 3])
         
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
                                          bind_root=False, filler_weights=None, 
                                          role_weights=None, max_d=d)
 
@@ -291,7 +290,7 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         #       [2, 3, 4, 5]
         # [1, 2, 3, 4] [1, 1, 1, 1]
         # [ 1 1]        [ 2 3]
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_NON_COMMUTATIVE, 
                                bind_root=False)
         
         fillers = vsa_converter.filler_emb.weight 
@@ -325,32 +324,32 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         print(f'Root idx is {torch.argmax(root_idx_sims)}, with sims {root_idx_sims}')
         
         # cosine sim
-        unbound_left = vsa_converter.vsa_operator.unbind_op(hrr_rep, vsa_converter.inv_left_role)
+        unbound_left = vsa_converter.vsa_operator.unbind_op(vsa_converter.left_role, hrr_rep)
         unbound_left_sims = torch.cosine_similarity(unbound_left.unsqueeze(0), vsa_converter.filler_emb.weight.unsqueeze(0), dim=-1)
         unbound_left_idx = torch.argmax(unbound_left_sims, dim=-1)
         print(f'Unbound left is {unbound_left} with sims {unbound_left_sims} w idx {unbound_left_idx}')
         
-        unbound_right = vsa_converter.vsa_operator.unbind_op(hrr_rep, vsa_converter.inv_right_role)
+        unbound_right = vsa_converter.vsa_operator.unbind_op(vsa_converter.right_role, hrr_rep)
         unbound_right_sims = torch.cosine_similarity(unbound_right.unsqueeze(0), vsa_converter.filler_emb.weight.unsqueeze(0), dim=-1)
         unbound_right_idx = torch.argmax(unbound_right_sims, dim=-1)
         print(f'Unbound right is {unbound_right} with sims {unbound_right_sims} w idx {unbound_right_idx}')
         
-        unbound_ll = vsa_converter.vsa_operator.unbind_op(unbound_left, vsa_converter.inv_left_role)
+        unbound_ll = vsa_converter.vsa_operator.unbind_op(vsa_converter.left_role, unbound_left)
         unbound_ll_sims = torch.cosine_similarity(unbound_ll.unsqueeze(0), vsa_converter.filler_emb.weight.unsqueeze(0), dim=-1)
         unbound_ll_idx = torch.argmax(unbound_ll_sims, dim=-1)
         print(f'Unbound ll is {unbound_ll} with sims {unbound_ll_sims} w idx {unbound_ll_idx}')
         
-        unbound_lr = vsa_converter.vsa_operator.unbind_op(unbound_left, vsa_converter.inv_right_role)
+        unbound_lr = vsa_converter.vsa_operator.unbind_op(vsa_converter.right_role, unbound_left)
         unbound_lr_sims = torch.cosine_similarity(unbound_lr.unsqueeze(0), vsa_converter.filler_emb.weight.unsqueeze(0), dim=-1)
         unbound_lr_idx = torch.argmax(unbound_lr_sims, dim=-1)
         print(f'Unbound lr is {unbound_lr} with sims {unbound_lr_sims} w idx {unbound_lr_idx}')
         
-        unbound_rl = vsa_converter.vsa_operator.unbind_op(unbound_right, vsa_converter.inv_left_role)
+        unbound_rl = vsa_converter.vsa_operator.unbind_op(vsa_converter.left_role, unbound_right)
         unbound_rl_sims = torch.cosine_similarity(unbound_rl.unsqueeze(0), vsa_converter.filler_emb.weight.unsqueeze(0), dim=-1)
         unbound_rl_idx = torch.argmax(unbound_rl_sims, dim=-1)
         print(f'Unbound rl is {unbound_rl} with sims {unbound_rl_sims} w idx {unbound_rl_idx}')
         
-        unbound_rr = vsa_converter.vsa_operator.unbind_op(unbound_right, vsa_converter.inv_right_role)
+        unbound_rr = vsa_converter.vsa_operator.unbind_op(vsa_converter.right_role, unbound_right)
         unbound_rr_sims = torch.cosine_similarity(unbound_rr.unsqueeze(0), vsa_converter.filler_emb.weight.unsqueeze(0), dim=-1)
         unbound_rr_idx = torch.argmax(unbound_rr_sims, dim=-1)
         print(f'Unbound rr is {unbound_rr} with sims {unbound_rr_sims} w idx {unbound_rr_idx}')
@@ -367,9 +366,9 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         n_fillers = 4
         hypervec_dim = 32
         d = 3
-        tree = torch.Tensor([1, 2, 3, 2, 1, 2, 1])
+        tree = torch.Tensor([1, 2, 3, 2, 3, 1, 2])
         
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR, 
+        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_NON_COMMUTATIVE, 
                                          bind_root=False, filler_weights=None, 
                                          role_weights=None, max_d=d)
 
@@ -420,3 +419,7 @@ def assert_complex_projection_unitary(x: torch.Tensor) -> None:
     
 if __name__ == '__main__': 
     absltest.main()
+    
+    
+    
+    

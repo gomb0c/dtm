@@ -51,6 +51,8 @@ class VSAConverter(VectorSymbolicConverter):
         self.role_emb.requires_grad = False
         self.role_emb.weight.requires_grad = False 
         
+        print(f'Bind op is {self.vsa_operator.bind_op}')
+        
         self.init_hypervecs()
         self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
         self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
@@ -107,40 +109,44 @@ class VSAConverter(VectorSymbolicConverter):
             
             vsa_reps_j = torch.zeros((b_sz, self.hypervec_dim), device=trees.device)
             vsa_reps_j[valid_mask] = f 
-            #print(f'At j, vocab_reps_j is {vsa_reps_j[valid_mask]}')
+            print(f'At j, vocab_reps_j is {vsa_reps_j[valid_mask]}')
             #print(f'Filler is {f}\nhrr reps is {vsa_reps}\nvalid mask is {valid_mask}')
             
             # bind the root with a root role if applicable
             if j == 0 and self.bind_root: 
                 vsa_reps_j[valid_mask] = self.vsa_operator.bind_op(self.root_role, f)
-                #print(f'J is {j}, result of binding {f} to root is {vsa_reps_j[valid_mask]}')
-                #print(f'After, vssa_reps_j is {vsa_reps_j[valid_mask]}')
+                print(f'J is {j}, result of binding {f} to root is {vsa_reps_j[valid_mask]}')
+                print(f'After, vssa_reps_j is {vsa_reps_j[valid_mask]}')
             
             # left child 
+            # ACCIDENTALLY BINDING J = 0 (ROOT TO LEFT ... ?)
             left_idx = 2*j + 1
             if left_idx < max_nodes: 
                 left_child_mask = valid_mask & (trees[:, left_idx] > 0)
                 if torch.any(left_child_mask): 
                     # convolve in batch -> (n_valid_children, hypervec_dim)
                     left_child_vecs = vsa_reps[left_child_mask, left_idx, :]
+                    #print(f'LEFT CHILD INDEX {left_idx}')
                     conv_left = self.vsa_operator.bind_op(self.left_role, left_child_vecs)
                     #print(f'For j index {j}: Conv left between left_child_vecs at idx {left_idx} is {left_child_vecs} {conv_left}\n')
                     vsa_reps_j[left_child_mask] += conv_left 
-                    #print(f'J is {j}, result of binding {f} to left is {vsa_reps_j[valid_mask]}')
-                    #print(f'After, vsa_reps_j is {vsa_reps_j[valid_mask]}')
+                    #print(f'J is {j}, result of binding {left_child_vecs} to left is {vsa_reps_j[left_child_mask]}')
+                    #print(f'After, vsa_reps_j is {vsa_reps_j[left_child_mask]}')
             # right child
             right_idx = 2*j + 2
             if right_idx < max_nodes: 
                 right_child_mask = valid_mask & (trees[:, right_idx] > 0)
                 if torch.any(right_child_mask): 
+                    #print(f'RIGHT CHILD INDEX {right_idx}')
                     right_child_vecs = vsa_reps[right_child_mask, right_idx, :]
                     conv_right = self.vsa_operator.bind_op(self.right_role, right_child_vecs)
                     vsa_reps_j[right_child_mask] += conv_right
                     #print(f'For j index {j}: Conv right between right vecs at idx {right_idx} is {right_child_vecs} {conv_right}\n')
-                    #print(f'After, vsa_reps_j is {vsa_reps_j[valid_mask]}')
+                    #print(f'After, vsa_reps_j is {vsa_reps_j[right_child_mask]}')
             vsa_reps[:, j, :] = vsa_reps_j
             #print(f'At iter {j}, we have {vsa_reps[:, j, :]}\n')
         
+        #print(f'At the end, vsa reps is {vsa_reps}')
         return vsa_reps[:, 0, :] # corresponds to vsa rep of root
     
     
