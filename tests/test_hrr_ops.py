@@ -11,7 +11,8 @@ import math
 import numpy as np
 import torch
 from absl.testing import absltest 
-from hrr_ops import complexMagProj, circular_conv, circular_corr, get_inv, get_appx_inv, generate_seed_vecs
+from ops.hrr_ops import complexMagProj, circular_conv, circular_corr, get_inv,\
+    get_appx_inv, generate_seed_vecs, non_commutative_binding
 
 torch.manual_seed(1234)
 np.random.seed(1234)
@@ -54,6 +55,17 @@ class TestHRROps(absltest.TestCase):
                                  [-0.1602778,0.0702778, -0.0678889]])
         actual = circular_conv(a, b)
         np.testing.assert_allclose(actual, expected, atol=1e-8, rtol=1e-6)
+        
+    def test_non_commutative_binding(self): 
+        a = torch.Tensor([[-2/3, 1/3, 2/3],
+                          [1/8, -8/9, 1/5]])
+        b = torch.Tensor([[10, -11, 23],
+                          [1/10, 2/10, -1/50]])
+        expected = torch.Tensor([[-12.3333333,-6.3333333,26.0000000],
+                                 [-0.1602778,0.0702778, -0.0678889]])
+        actual = non_commutative_binding(a, b)
+        np.testing.assert_allclose(actual, expected, atol=1e-8, rtol=1e-6)
+        np.testing.assert_equal((actual != circular_conv(a, b)).all().item(), True)
         
     def test_circular_corr(self): 
         a = torch.zeros(size=(10, 2))

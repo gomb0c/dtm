@@ -13,6 +13,8 @@ import torch.nn.functional as F
 import sys 
 np.set_printoptions(threshold=sys.maxsize)
 
+from ops.perm_ops import cyclic_shift
+
 """
 Pytorch functions.
 """
@@ -37,6 +39,36 @@ def complex_division(left, right):
     output_real = torch.div((left_real * right_real + left_complex * right_complex),(right_real**2 + right_complex**2))
     output_complex = torch.div((left_complex * right_real - left_real * right_complex ),(right_real**2 + right_complex**2))
     return torch.stack([output_real, output_complex], dim=-1)
+
+def non_commutative_binding(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor: 
+    """ 
+    Defines a non-commutative binding by applying a fixed cyclic permutation, rho to a
+    before taking the circular conv with b.
+    This ensures non_commutative_binding(a, b) != non_commutative_binding(b, a)
+    """
+    rho_a = cyclic_shift(a, shift=1)
+    return circular_conv(rho_a, b)
+
+def non_commutative_unbinding(a: torch.Tensor, ab: torch.Tensor) -> torch.Tensor: 
+    """
+    Performs unbinding with assumption that non-commutative binding has been applied
+    Assumes second argument is the result of non_commutative_binding(a, b), i.e. ab = non_commutative_binding(a, b)
+    We want to unbind b from ab (i.e., to 'undo' a)
+    """ 
+    rho_a = cyclic_shift(a, shift=1)
+    return circular_corr(ab, rho_a) # note that this returns b
+
+def standard_binding(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor: 
+    return circular_conv(a, b)
+
+def standard_unbinding(a: torch.Tensor, ab: torch.Tensor) -> torch.Tensor: 
+    """
+    Performs unbinding with assumption that standard circ conv binding has been applied (commutative variant)
+    Assumes second argument is result of commutative binding, i.e. ab = circ_conv(a, b) = circ_conv(ba) 
+    We want to unbind b from ab (i.e., to 'undo' a)
+    """
+    a_inv = get_inv(a)
+    return circular_corr(ab, a_inv)
 
 def circular_conv(a, b):
     """ Defines the circular convolution operation

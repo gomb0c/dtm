@@ -4,23 +4,26 @@ import torch.nn as nn
 
 import constants.vsa_types as VSATypes
 import constants.positions as Positions
-import hrr_ops as hrr_ops
+import ops.hrr_ops as hrr_ops
+import ops.perm_ops as perm_ops
 from vector_symbolic_utils import VectorSymbolicConverter, VectorSymbolicManipulator
 
 '''
 To think about: maybe orthogonalise the hypervec space based on the number of actual fillers (not including empty filler?)
 '''
 class VSAOps(): 
-    def __init__(self, vsa_type: VSATypes=VSATypes.HRR) -> None: 
-        if vsa_type == VSATypes.HRR: 
-            self.bind_op = hrr_ops.circular_conv
-            self.unbind_op = hrr_ops.circular_conv 
-            self.inverse_op = hrr_ops.get_inv
+    def __init__(self, vsa_type: VSATypes=VSATypes.HRR_STANDARD) -> None: 
+        if vsa_type == VSATypes.HRR_STANDARD: 
+            self.bind_op = hrr_ops.standard_binding
+            self.unbind_op = hrr_ops.standard_unbinding 
+            self.generator = hrr_ops.generate_seed_vecs
+        elif vsa_type == VSATypes.HRR_NON_COMMUTATIVE: 
+            self.bind_op = hrr_ops.non_commutative_binding 
+            self.unbind_op = hrr_ops.non_commutative_unbinding
             self.generator = hrr_ops.generate_seed_vecs
         else: 
             raise NotImplementedError(f"{vsa_type} does not yet have implemented operations")
 
-    
 class VSAConverter(VectorSymbolicConverter): 
     def __init__(self, n_fillers: int, dim: int, 
                  vsa_operator: VSAOps, max_d: int=15,
@@ -53,7 +56,6 @@ class VSAConverter(VectorSymbolicConverter):
         self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
         self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
         self.root_role = nn.Parameter(self.role_emb.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
-        self.set_inv_roles()
         
     def _set_hypervecs(self, filler_weights: torch.Tensor=None, role_weights: torch.Tensor=None) -> None:
         ''' For testing purposes '''
@@ -64,13 +66,7 @@ class VSAConverter(VectorSymbolicConverter):
             self.left_role = nn.Parameter(self.role_emb.weight[Positions.LEFT_INDEX].unsqueeze(0), requires_grad=False)
             self.right_role = nn.Parameter(self.role_emb.weight[Positions.RIGHT_INDEX].unsqueeze(0), requires_grad=False)
             self.root_role = nn.Parameter(self.role_emb.weight[Positions.ROOT_INDEX].unsqueeze(0), requires_grad=False) if self.bind_root else None
-        self.set_inv_roles()
-        
-    def set_inv_roles(self): 
-        self.inv_left_role = self.vsa_operator.inverse_op(self.left_role)
-        self.inv_right_role = self.vsa_operator.inverse_op(self.right_role)
-        if self.bind_root: 
-            self.inv_root = self.vsa_operator.inverse_op(self.root_role)
+
     
     def init_hypervecs(self) -> None:
         print(f'INITIALISING HYPERVECS')
@@ -154,10 +150,9 @@ class VSAConverter(VectorSymbolicConverter):
         sims_list = []
         
         if self.bind_root: 
-            vsa = self.vsa_operator.unbind_op(vsa, self.inv_root)
+            vsa = self.vsa_operator.unbind_op(self.root_role, vsa)
         queue.append((vsa, 0))
         
-
         i = 0
         while queue: 
             current_vsa, d = queue.popleft()
@@ -175,9 +170,9 @@ class VSAConverter(VectorSymbolicConverter):
             if d < self.max_d - 1:
                 # enqueue left and right 
                 print(f'UNBINDING LEFT...')
-                left_subtree = self.vsa_operator.unbind_op(current_vsa, self.inv_left_role)
+                left_subtree = self.vsa_operator.unbind_op(self.left_role, current_vsa)
                 print(f'FINISHED LEFT, which is {left_subtree}... UNBINDING RIGHT...')
-                right_subtree = self.vsa_operator.unbind_op(current_vsa, self.inv_right_role)
+                right_subtree = self.vsa_operator.unbind_op(self.right_role, current_vsa)
                 
                 queue.append((left_subtree, d+1))
                 queue.append((right_subtree, d+1))
@@ -186,36 +181,7 @@ class VSAConverter(VectorSymbolicConverter):
         print(f'Sims list is {sims_list}')
         return torch.cat(sims_list, dim=1) # (B, 2**self.max_d-1, N_{F})
     
-    """
-    def _decode_vsymbolic(self, vsa: torch.Tensor, d: int, eps: float=1e-10) -> torch.Tensor: 
-        if d == 0 and self.bind_root: 
-            vsa = self.vsa_operator.unbind_op(vsa, self.inv_root)
-        
-        # get current node 
-        norm = torch.norm(vsa, keepdim=True) # (B, 1)
-        sim_mat = torch.cosine_similarity(vsa.unsqueeze(1), self.filler_emb.weight.unsqueeze(0),
-                                          dim=-1) # (B, D), (N_{F}, D) -> (B, N_{F})
-        sim = torch.where(norm >= eps, sim_mat, torch.zeros_like(sim_mat)).unsqueeze(1) # (B, 1, N_{F})
-        print(f'Depth is {d}, sim is {sim} with shape {sim.shape}')
-        sims_list = [sim]
-        
-        if d >= self.max_d - 1:
-            return sims_list 
-        
-        left_subtree =  self.vsa_operator.unbind_op(vsa, self.inv_left_role)
-        right_subtree = self.vsa_operator.unbind_op(vsa, self.inv_right_role)
-        
-        print(f'UNBINDING LEFT depth {d}...\nWith left inverse role {self.inv_left_role}\nLeft subtree {left_subtree}')
-        left_st_sims = self._decode_vsymbolic(left_subtree, d+1, eps)
-        print(f'LEFT UNBOUND depth {d}, result {left_st_sims}\n')
-        print(f'UNBINDING RIGHT depth {d}...\nWith right inverse role {self.inv_right_role}\nRight subtree {right_subtree}')
-        right_st_sims = self._decode_vsymbolic(right_subtree, d+1, eps)
-        print(f'RIGHT UNBOUND depth {d}, result {right_st_sims}\n')
-        
-        print(f'Sims list is {sims_list}, left is {left_st_sims}, right is {right_st_sims}\n')
-        
-        return sims_list + left_st_sims + right_st_sims
-    """
+    
     def decode_vsymbolic(self, vsa: torch.Tensor, return_distances: bool=True,
                                        eps: float=1e-10) -> torch.Tensor: 
         ''''
