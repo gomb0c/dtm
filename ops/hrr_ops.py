@@ -47,6 +47,7 @@ def non_commutative_binding(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     This ensures non_commutative_binding(a, b) != non_commutative_binding(b, a)
     """
     rho_a = cyclic_shift(a, shift=1)
+    print(f'A is {a}, rho a is {rho_a}\n')
     return circular_conv(rho_a, b)
 
 def non_commutative_unbinding(a: torch.Tensor, ab: torch.Tensor) -> torch.Tensor: 
@@ -56,7 +57,8 @@ def non_commutative_unbinding(a: torch.Tensor, ab: torch.Tensor) -> torch.Tensor
     We want to unbind b from ab (i.e., to 'undo' a)
     """ 
     rho_a = cyclic_shift(a, shift=1)
-    return circular_corr(ab, rho_a) # note that this returns b
+    print(f'A is {a}, rho a is {rho_a}\n')
+    return circular_corr(rho_a, ab) # note that this returns b
 
 def standard_binding(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor: 
     return circular_conv(a, b)
@@ -67,8 +69,7 @@ def standard_unbinding(a: torch.Tensor, ab: torch.Tensor) -> torch.Tensor:
     Assumes second argument is result of commutative binding, i.e. ab = circ_conv(a, b) = circ_conv(ba) 
     We want to unbind b from ab (i.e., to 'undo' a)
     """
-    a_inv = get_inv(a)
-    return circular_corr(ab, a_inv)
+    return circular_corr(a, ab) # equivalent to getting the inverse of a, and applying conv to unbind b
 
 def circular_conv(a, b):
     """ Defines the circular convolution operation
@@ -92,6 +93,7 @@ def circular_corr(a, b):
     
     # Compute the inverse FFT to obtain the circular correlation in the time domain.
     y = torch.fft.irfft(prod, n=a.size(1))
+    print(f'Y is {y}')
     D = a.size(1)
     idxs = (-torch.arange(D)) % D
     return y[...,idxs] # cyclic shift

@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from absl.testing import absltest 
 from ops.hrr_ops import complexMagProj, circular_conv, circular_corr, get_inv,\
-    get_appx_inv, generate_seed_vecs, non_commutative_binding
+    get_appx_inv, generate_seed_vecs, non_commutative_binding, non_commutative_unbinding
 
 torch.manual_seed(1234)
 np.random.seed(1234)
@@ -80,6 +80,20 @@ class TestHRROps(absltest.TestCase):
                                  [-46.11,5.0525,-25.305,33.437500]])
         actual = circular_corr(a, b)
         np.testing.assert_allclose(actual, expected, atol=1e-3, rtol=1e-6)
+        
+    def test_non_commutative_unbinding(self): 
+        a = complexMagProj(torch.Tensor([-2/3, 1/3, 2/3]).unsqueeze(0))
+        b = torch.Tensor([10, -11, 23]).unsqueeze(0)
+        conv = non_commutative_binding(a, b)
+        
+        # precondition
+        expected_conv = 1/(3*math.sqrt(13))*torch.Tensor([22*math.sqrt(13) - 133, 
+                                                        22*math.sqrt(13) - 79, 
+                                                        22*math.sqrt(13) + 212]).unsqueeze(0)
+        np.testing.assert_allclose(conv, expected_conv, atol=1e-5, rtol=1e-6)
+        
+        hat_b = non_commutative_unbinding(a, conv)
+        np.testing.assert_allclose(hat_b, b, atol=1e-6, rtol=1e-3)
         
     def test_circular_corr_is_inverse(self): 
         ''' Precondition for circular correlation to unbind is that the vector we want to unbind

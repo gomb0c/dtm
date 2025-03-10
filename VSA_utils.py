@@ -5,7 +5,6 @@ import torch.nn as nn
 import constants.vsa_types as VSATypes
 import constants.positions as Positions
 import ops.hrr_ops as hrr_ops
-import ops.perm_ops as perm_ops
 from vector_symbolic_utils import VectorSymbolicConverter, VectorSymbolicManipulator
 
 '''
