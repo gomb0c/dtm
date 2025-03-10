@@ -18,6 +18,10 @@ from ops.perm_ops import cyclic_shift
 """
 Pytorch functions.
 """
+
+def get_conv_identity(d: int) -> torch.Tensor: 
+    return torch.concat((torch.ones(1,), torch.zeros(d-1)), dim=0)
+
 def complex_multiplication(left, right):
     """
     Multiply two vectors in complex domain.

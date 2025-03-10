@@ -10,10 +10,9 @@ import constants.vsa_types as VSATypes
 torch.manual_seed(1234)
 np.random.seed(1234)
 
-def get_vsa_instance(n_fillers: int, dim: int, vsa_type: VSATypes, bind_root: bool,
-                     filler_weights: torch.Tensor = None, role_weights: torch.Tensor = None, 
+def get_vsa_instance(n_fillers: int, dim: int, vsa_type: VSATypes, filler_weights: torch.Tensor = None, role_weights: torch.Tensor = None, 
                      max_d: int=3, strict_orth: bool=False) -> VSAConverter:
-    vsa_converter = VSAConverter(n_fillers, dim, VSAOps(vsa_type), max_d, bind_root, strict_orth)
+    vsa_converter = VSAConverter(n_fillers, dim, VSAOps(vsa_type), max_d, strict_orth)
     if filler_weights is not None and role_weights is not None: 
         print(f'Setting filler weights and role weights to {filler_weights}, {role_weights}')
         vsa_converter._set_hypervecs(filler_weights, role_weights)
@@ -23,7 +22,7 @@ def get_vsa_instance(n_fillers: int, dim: int, vsa_type: VSATypes, bind_root: bo
 class VSAConverterInitialise(absltest.TestCase):
     def test_init_seed_vectors(self): 
         vsa_instance = get_vsa_instance(n_fillers=1000, dim=1024, 
-                                        vsa_type=VSATypes.HRR_STANDARD, bind_root=False, 
+                                        vsa_type=VSATypes.HRR_STANDARD, 
                                         filler_weights=None, role_weights=None, 
                                         max_d=3, strict_orth=False)
         filler_embs = vsa_instance.filler_emb.weight 
@@ -37,6 +36,7 @@ class VSAConverterInitialise(absltest.TestCase):
         np.testing.assert_allclose(dft_projected, torch.ones_like(dft_projected), atol=1e-4, rtol=1e-5)
 
 class VSAConverterConvertSTree(absltest.TestCase): 
+    """
     def test_single_node_tree(self): 
         n_fillers = 2
         hypervec_dim = 7
@@ -47,29 +47,10 @@ class VSAConverterConvertSTree(absltest.TestCase):
         tree = torch.Tensor([2])
         
         vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
-                               bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
+                                         filler_weights=filler_weights, role_weights=role_weights, max_d=1)
         hrr_rep = vsa_converter(tree.unsqueeze(0)) 
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), np.array([2, 4, 8, 16, 32, 64, 128]))
     
-    def test_single_node_tree_root_role(self): 
-        n_fillers = 2
-        hypervec_dim = 7
-        filler_weights = torch.Tensor([[0, 0, 0, 0, 0, 0, 0],
-                                       [1, 2, 4, 8, 16, 32, 64],
-                                       [2, 4, 8, 16, 32, 64, 128]])
-        role_weights = torch.randn(size=(2, hypervec_dim))
-        role_weights = torch.concat([role_weights, 
-                                     torch.Tensor([1/7, 1/7, 1/7, 1/7, 1/7, 1/7, 1/7]).unsqueeze(0)], dim=0)
-        # root role has position 3 in the role_weights dict 
-        # 
-        tree = torch.Tensor([2])
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
-                               bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
-        hrr_rep = vsa_converter.encode_stree(tree.unsqueeze(0)) 
-        # expected result is circ conv between filler_weights[1] and role_weights[positions.role_index]
-        expected_result = (254/7)*torch.ones_like(filler_weights[0])
-        np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
-        
     def test_multinode_tree_balanced(self): 
         n_fillers = 3
         hypervec_dim = 4
@@ -77,70 +58,45 @@ class VSAConverterConvertSTree(absltest.TestCase):
                                        [1, 1, 1, 1], 
                                        [2, 3, 4, 5], 
                                        [1, 2, 3, 4]])
-        role_weights = torch.Tensor([[1, 9, 8, 3],
-                                     [2, 4, 8, 16]])
+        role_weights = torch.Tensor([[9, 8, 3, 1],
+                                     [4, 8, 16, 2]])
         tree = torch.Tensor([2, 3, 1])
         #       [2, 3, 4, 5]
         # [1, 2, 3, 4] [1, 1, 1, 1]
         vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
-                               bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
+                               filler_weights=filler_weights, role_weights=role_weights,
+                               max_d=2)
         hrr_rep = vsa_converter.encode_stree(tree.unsqueeze(0))
         # expected result
-        left_part = torch.Tensor([67, 52, 41, 50])
+        left_part = torch.Tensor([52, 41, 50, 67])
         right_part = torch.Tensor([30, 30, 30, 30])
         expected_result = left_part + right_part + filler_weights[2]
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
     
+    """
     def test_multinode_tree_balanced(self): 
         n_fillers = 3
-        hypervec_dim = 4
-        filler_weights = torch.Tensor([[0, 0, 0, 0],
-                                       [1, 2, 1, 1], 
-                                       [2, 3, 4, 5], 
-                                       [1, 2, 3, 4]])
-        role_weights = torch.Tensor([[1, 9, 8, 3],
-                                     [2, 4, 8, 16]])
+        hypervec_dim = 3
+        filler_weights = torch.Tensor([[0, 0, 0],
+                                       [1, 2, 1], 
+                                       [2, 3, 4], 
+                                       [1, 1.5, 3]])
+        role_weights = torch.Tensor([[1, 9, 8],
+                                     [2, 4, 8]])
         tree = torch.Tensor([2, 3, 1, 1, 1, 2, 3])
-        #       [2, 3, 4, 5]
-        # [1, 2, 3, 4] [1, 1, 1, 1]
+        #       [2, 3, 4]
+        # [1, 2, 3] [1, 1, 1]
         # [ 1 1]        [ 2 3]
         vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
-                               bind_root=False, filler_weights=filler_weights, role_weights=role_weights)
+                                        filler_weights=filler_weights, role_weights=role_weights)
         hrr_rep = vsa_converter.encode_stree(tree.unsqueeze(0))
         # expected result
-        children_left = torch.Tensor([24, 22, 30, 29]) + torch.Tensor([46, 32, 34, 38])
-        subtree_at_node_3 = filler_weights[3] + children_left  # (71, 56, 67, 71)
-        children_right = torch.Tensor([88, 73, 62, 71]) + torch.Tensor([74, 88, 86, 52])
-        subtree_at_node_1 = children_right + filler_weights[1] # (163, 163, 149, 124)
-        left_part = torch.Tensor([1414, 1464, 1352, 1335]) 
-        right_part = torch.Tensor([4622, 4354, 4238, 4756])
-        expected_result = left_part + right_part + filler_weights[2]
-        np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
+        # l = role_weights[0] (1 9 8)
+        # r = role_weights[1] (2 4 8)
+        # ll = \rho(l) \ast l = (9 8 1) \ast (1 9 8)
+        # np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
     
-    
-    def test_multinode_tree_balanced_root_role(self): 
-        n_fillers = 3
-        hypervec_dim = 4
-        filler_weights = torch.Tensor([[0, 0, 0, 0], 
-                                       [1, 1, 1, 1], 
-                                       [2, 3, 4, 5], 
-                                       [1, 2, 3, 4]])
-        role_weights = torch.Tensor([[1, 9, 8, 3],
-                                     [2, 4, 8, 16],
-                                     [1/2, 1/3, 1/4, 1/2]])
-        tree = torch.Tensor([2, 3, 1])
-        #       [2, 3, 4, 5]
-        # [1, 2, 3, 4] [1, 1, 1, 1]
-        vsa_converter = get_vsa_instance(n_fillers, hypervec_dim, VSATypes.HRR_STANDARD, 
-                               bind_root=True, filler_weights=filler_weights, role_weights=role_weights)
-        hrr_rep = vsa_converter(tree.unsqueeze(0))
-        # expected result
-        left_part = torch.Tensor([67, 52, 41, 50])
-        right_part = torch.Tensor([30, 30, 30, 30])
-        root_part = torch.Tensor([31/6, 65/12, 6, 67/12])
-        expected_result = left_part + right_part + root_part
-        np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
-    
+    """
     def test_multinode_tree_unbalanced(self): 
         n_fillers = 5
         hypervec_dim = 3
@@ -224,7 +180,6 @@ class VSAConverterConvertSTree(absltest.TestCase):
         np.testing.assert_allclose(hrr_rep.squeeze(0).numpy(), expected_result.numpy(), atol=1e-8, rtol=1e-6)
 
 class VSAConverterDecodeVSA(absltest.TestCase): 
-    """
     def test_decode_single_node_tree_root_unbound(self):
         n_fillers = 3
         hypervec_dim = 3
@@ -281,7 +236,6 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         sims = vsa_converter.decode_vsymbolic(hrr_rep)
         idxs = torch.argmax(sims, dim=-1)
         np.testing.assert_array_equal(tree.unsqueeze(0), idxs)
-    """
     
     def test_decode(self): 
         n_fillers = 4
@@ -295,17 +249,7 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         
         fillers = vsa_converter.filler_emb.weight 
         roles = vsa_converter.role_emb.weight 
-        
-        """
-        Fillers are Parameter containing:
-        tensor([[ 0.0000,  0.0000,  0.0000,  0.0000],
-                [-0.4911,  0.5941,  0.4911,  0.4059],
-                [-0.3289, -0.4698, -0.6711,  0.4698],
-                [-0.9577, -0.2012, -0.0423,  0.2012]])
-        Roles are Parameter containing:
-        tensor([[-0.3214,  0.4670, -0.6786, -0.4670],
-                [ 0.4525, -0.2872, -0.4525, -0.7128]])
-        """
+
         
         # preconditions that projections unitary
         assert_complex_projection_unitary(fillers[1:])
@@ -380,7 +324,7 @@ class VSAConverterDecodeVSA(absltest.TestCase):
         np.testing.assert_array_equal(tree.unsqueeze(0), idxs)
 
 
-    """
+
     def decode_multinode_tree_full_root_bound(self): 
         pass
     
@@ -405,10 +349,10 @@ class VSAConverterDecodeVSA(absltest.TestCase):
 #    
 #    def test_batched_some_empty_nodes(self): 
 #        pass 
-"""
+
 
 # continue doing this when home
-
+"""
 def assert_complex_projection_unitary(x: torch.Tensor) -> None:
     dft_projected = torch.fft.rfft(x, dim=-1).abs()
     np.testing.assert_almost_equal(dft_projected.mean().item(), 1, decimal=5)
@@ -419,7 +363,4 @@ def assert_complex_projection_unitary(x: torch.Tensor) -> None:
     
 if __name__ == '__main__': 
     absltest.main()
-    
-    
-    
     
